@@ -1,3 +1,9 @@
+--[[
+
+    Get this inventory here https://onestudios.gg/
+
+]]--
+
 ---@diagnostic disable: duplicate-set-field
 if GetResourceState('one_inventory') == 'missing' then return end
 local inv = exports['one_inventory']
