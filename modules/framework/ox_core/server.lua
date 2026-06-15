@@ -57,14 +57,38 @@ local function buildPlayerData(player)
     }
 end
 
-Framework.oxGetRawPlayer = function(src)
-    return Ox.GetPlayer(src)
+local function buildGroupData(player)
+    local groups = player.getGroups() or {}
+    local allGroups = Ox.GetGroupsByType('job') or {}
+
+    local primaryJobName = 'unemployed'
+    local primaryJobGrade = 0
+
+    for groupName, grade in pairs(groups) do
+        primaryJobName = groupName
+        primaryJobGrade = grade
+        break
+    end
+
+    local groupDef = allGroups[primaryJobName]
+
+    return {
+        name = primaryJobName,
+        label = groupDef and groupDef.label or primaryJobName,
+        grade = {
+            name = tostring(primaryJobGrade),
+            level = primaryJobGrade,
+        },
+        isboss = false,
+        onduty = player.get('onDuty') or player.get('onduty') or false,
+    }
 end
 
----@description Returns the name of the framework being used (if a supported framework).
+---@description This will return the name of the framework in use.
 ---@return string
 Framework.GetFrameworkName = function()
-    return 'ox_core'
+    print("[Community Bridge] Warning: Framework.GetFrameworkName is deprecated, use Framework.GetResourceName instead.")
+    return Framework.GetResourceName()
 end
 
 ---@description This will get the name of the in use resource.
@@ -74,54 +98,29 @@ Framework.GetResourceName = function()
 end
 
 ---@description This will return if the player is an admin in the framework.
----@param src number
+---@param src any
 ---@return boolean
 Framework.GetIsFrameworkAdmin = function(src)
     if not src then return false end
-    return IsPlayerAceAllowed(src, 'admin') or IsPlayerAceAllowed(src, 'group.admin')
+    return IsPlayerAceAllowed(src, 'command') or IsPlayerAceAllowed(src, 'group.admin')
 end
 
----@description Returns the player date of birth.
+---@description This will return the citizen ID of the player.
 ---@param src number
----@return string|nil
-Framework.GetPlayerDob = function(src)
+---@return string | nil
+Framework.GetPlayerIdentifier = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    return player.PlayerData.charinfo.birthdate
+    local identifier = player.charId
+    return tostring(identifier) or nil
 end
 
----@description Returns the player data of the specified source.
----@param src number
+---@description Returns the player data of the specified source in the framework defualt format.
+---@param src any
 ---@return table | nil
 Framework.GetPlayer = function(src)
     local player = Ox.GetPlayer(src)
     if not player then return end
-
-    local playerData = buildPlayerData(player)
-
-    player.PlayerData = playerData
-    player.Functions = {
-        AddMoney = function(_type, amount)
-            if _type == 'cash' then _type = 'money' end
-            return player.addAccount(_type, amount)
-        end,
-        RemoveMoney = function(_type, amount)
-            if _type == 'cash' then _type = 'money' end
-            return player.removeAccount(_type, amount)
-        end,
-        SetMetaData = function(key, value)
-            player.set(key, value)
-            playerData.metadata[key] = value
-            return true
-        end,
-        SetJob = function(name, grade)
-            return player.setGroup(name, grade)
-        end,
-        SetJobDuty = function(status)
-            return player.set('onDuty', status)
-        end,
-    }
-
     return player
 end
 
@@ -147,15 +146,6 @@ end
 ---@return table
 Framework.GetFrameworkJobs = function()
     return {}
-end
-
----@description Returns the citizen ID of the player.
----@param src number
----@return string | nil
-Framework.GetPlayerIdentifier = function(src)
-    local player = Framework.GetPlayer(src)
-    if not player then return end
-    return player.PlayerData.citizenid
 end
 
 ---@description This will return a table of all logged in players
@@ -318,35 +308,34 @@ Framework.GetPlayersByJob = function(job)
     return Framework.GetPlayerSourcesByJob(job) or {}
 end
 
----@description Deprecated: Returns the job name, label, grade name, and grade level of the player.
----Please use GetPlayerJobData instead.
+---@deprecated Deprecated: Returns the job name, label, grade name, and grade level of the player.
 ---@param src number
 ---@return string | string | string | number | nil
 ---@return string | string | string | number | nil
 ---@return string | string | string | number | nil
 ---@return string | string | string | number | nil
 Framework.GetPlayerJob = function(src)
+    --print("[Community Bridge] Warning: Framework.GetPlayerJob is deprecated, use Framework.GetPlayerJobData instead.")
     local jobData = Framework.GetPlayerJobData(src)
     if not jobData then return end
-    return jobData.name, jobData.label, jobData.gradeLabel, jobData.grade
+    return jobData.jobName, jobData.jobLabel, jobData.gradeName, jobData.gradeLevel
 end
 
----@description This will return the players job name, job label, job grade label job grade level, boss status, and duty status in a table
+---@description This will return the players job name, job label, job grade label job grade level, boss status,
+---and duty status in a table
 ---@param src number
 ---@return table | nil
 Framework.GetPlayerJobData = function(src)
-    local player = Framework.GetPlayer(src)
-    if not player then return end
-    local playerData = player.PlayerData
-    local jobData = playerData.job
+    local playerData = Framework.GetPlayer(src)
+    local jobData = buildGroupData(playerData)
     return {
-        name = jobData.name,
-        label = jobData.label,
-        grade = jobData.grade.level,
+        jobName = jobData.name,
+        jobLabel = jobData.label,
+        gradeName = jobData.grade.name,
         gradeLabel = jobData.grade.name,
-        isBoss = jobData.isboss,
-        duty = jobData.onduty,
-        type = jobData.type or 'job',
+        gradeRank = jobData.grade.level,
+        boss = jobData.isboss,
+        onDuty = jobData.onduty,
     }
 end
 
@@ -381,44 +370,52 @@ Framework.GetPlayerDuty = function(src)
     return true
 end
 
----@description Adds the specified amount to the player's account balance of the specified type.
+---@description This will add money based on the type of account (money/bank)
 ---@param src number
 ---@param _type string
 ---@param amount number
 ---@return boolean | nil
 Framework.AddAccountBalance = function(src, _type, amount)
     local player = Framework.GetPlayer(src)
-    if not player then return end
+    if not player then return false end
     if _type == 'money' then _type = 'cash' end
-    if amount <= 0 then return false end
-    return player.Functions.AddMoney(_type, amount)
+    if (_type == 'bank') then
+        return account.addBalance({ amount = amount })
+    else
+        return exports.ox_inventory:AddItem(src, 'money', amount)
+    end
 end
 
----@description Removes the specified amount from the player's account balance of the specified type.
+---@description This will remove money based on the type of account (money/bank)
 ---@param src number
 ---@param _type string
 ---@param amount number
 ---@return boolean | nil
 Framework.RemoveAccountBalance = function(src, _type, amount)
     local player = Framework.GetPlayer(src)
-    if not player then return end
+    if not player then return false end
     if _type == 'money' then _type = 'cash' end
-    if amount <= 0 then return false end
-    return player.Functions.RemoveMoney(_type, amount)
+    if (_type == 'bank') then
+        return account.removeBalance({ amount = amount })
+    else
+        return exports.ox_inventory:RemoveItem(src, 'money', amount)
+    end
 end
 
----@description Returns the player's account balance of the specified type.
+---@description This will remove money based on the type of account (money/bank)
 ---@param src number
 ---@param _type string
----@return number | nil
+---@return string | nil
 Framework.GetAccountBalance = function(src, _type)
     local player = Framework.GetPlayer(src)
-    if not player then return end
-    local playerData = player.PlayerData
+    if not player then return 0 end
+    local account = player.getAccount()
     if _type == 'money' then _type = 'cash' end
-    local balance = playerData.money[_type] or 0
-    if balance <= 0 then return 0 end
-    return balance
+    if (_type == 'bank') then
+        return account.get('balance')
+    else
+        return ox_inventory:GetItemCount("money")
+    end
 end
 
 ---@description Returns a table of owned vehicles for the player. format is {vehicle = vehicle, plate = plate}
