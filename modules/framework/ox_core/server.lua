@@ -7,7 +7,7 @@ local Ox = require '@ox_core.lib.init'
 
 local function buildPlayerData(player)
     local groups = player.getGroups() or {}
-    local allGroups = Ox.GetGroups() or {}
+    local allGroups = {}
 
     local primaryJobName = 'unemployed'
     local primaryJobGrade = 0
@@ -146,7 +146,7 @@ end
 ---@description Returns a table of the jobs in the framework.
 ---@return table
 Framework.GetFrameworkJobs = function()
-    return Ox.GetGroups()
+    return {}
 end
 
 ---@description Returns the citizen ID of the player.
