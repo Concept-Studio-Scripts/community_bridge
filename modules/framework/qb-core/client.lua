@@ -11,7 +11,7 @@ Framework.Shared = QBCore.Shared
 ---@description This will get the name of the framework being used (if a supported framework).
 ---@return string
 Framework.GetFrameworkName = function()
-    print("This is depricated, please use Framework.GetResourceName() instead.")
+    print("This is deprecated, please use Framework.GetResourceName() instead.")
     return Framework.GetResourceName()
 end
 
@@ -28,7 +28,7 @@ Framework.GetIsPlayerLoaded = function()
     return LocalPlayer.state.isLoggedIn or false
 end
 
----@description This will return a table of the player data, this will be in the framework format. 
+---@description This will return a table of the player data, this will be in the framework format.
 ---This is mainly for internal bridge use and should be avoided.
 ---@return table
 Framework.GetPlayerData = function()
@@ -176,7 +176,7 @@ end
 ---@param requiredCount number (optional)
 ---@return boolean
 Framework.HasItem = function(item, requiredCount)
-	return QBCore.Functions.HasItem(item, requiredCount or 1)
+    return QBCore.Functions.HasItem(item, requiredCount or 1)
 end
 
 ---@description This will return the item count for the specified item in the players inventory
