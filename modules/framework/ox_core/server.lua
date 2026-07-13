@@ -1,6 +1,7 @@
 ---@diagnostic disable: duplicate-set-field
 if GetResourceState('ox_core') ~= 'started' then return end
 
+Callback = Callback or Require("lib/callback/shared/callback.lua")
 Framework = Framework or {}
 
 local Ox = require '@ox_core.lib.init'
@@ -145,7 +146,7 @@ end
 ---@description Returns a table of the jobs in the framework.
 ---@return table
 Framework.GetFrameworkJobs = function()
-    return {}
+    return Ox.GetGroupsByType('job')
 end
 
 ---@description This will return a table of all logged in players
@@ -520,5 +521,11 @@ Framework.Commands.Add = function(name, help, arguments, argsrequired, callback,
         callback(src, args, raw)
     end, false)
 end
+
+---@description Callback to get framework jobs list
+---@param source number
+Callback.Register('community_bridge:Callback:GetFrameworkJobs', function(source)
+    return Framework.GetFrameworkJobs() or {}
+end)
 
 return Framework

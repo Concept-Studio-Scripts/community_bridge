@@ -1,6 +1,7 @@
 ---@diagnostic disable: duplicate-set-field
 if GetResourceState('ox_core') ~= 'started' then return end
 
+Callback = Callback or Require("lib/callback/shared/callback.lua")
 Framework = Framework or {}
 
 local Ox = require '@ox_core.lib.init'
@@ -12,7 +13,7 @@ end
 
 local function buildGroupData(player)
     local groups = player.getGroups() or {}
-    local allGroups = Ox.GetGroups() or {}
+    local allGroups = Framework.GetFrameworkJobs() or {}
 
     local primaryJobName = 'unemployed'
     local primaryJobGrade = 0
@@ -164,5 +165,12 @@ RegisterNetEvent('ox:setGroup', function(groupName, grade)
     TriggerEvent('community_bridge:Client:OnPlayerJobUpdate', jobData.name, jobData.label, jobData.grade.name,
         jobData.grade.level)
 end)
+
+---@description This will return a table of all the jobs in the framework.
+---@return table
+Framework.GetFrameworkJobs = function()
+    local jobs = Callback.Trigger('community_bridge:Callback:GetFrameworkJobs', false)
+    return jobs
+end
 
 return Framework
