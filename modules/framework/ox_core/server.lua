@@ -415,7 +415,7 @@ Framework.GetAccountBalance = function(src, _type)
     if (_type == 'bank') then
         return account.get('balance')
     else
-        return ox_inventory:GetItemCount("money")
+        return exports.ox_inventory:GetItemCount(src, "money")
     end
 end
 
@@ -526,6 +526,13 @@ end
 ---@param source number
 Callback.Register('community_bridge:Callback:GetFrameworkJobs', function(source)
     return Framework.GetFrameworkJobs() or {}
+end)
+
+---@description Callback to get account balance
+---@param source number
+---@param _type string
+Callback.Register('community_bridge:Callback:GetAccountBalance', function(source, _type)
+    return Framework.GetAccountBalance(source, _type) or 0
 end)
 
 return Framework

@@ -91,6 +91,13 @@ Framework.GetPlayerMetaData = function(metadata)
     return Framework.GetPlayerData().get(metadata)
 end
 
+---@description This will return a table of all the jobs in the framework.
+---@return table
+Framework.GetAccountBalance = function(_type)
+    local balance = Callback.Trigger('community_bridge:Callback:GetAccountBalance', _type)
+    return balance
+end
+
 ---@description This will get the hunger of a player
 ---@return number
 Framework.GetHunger = function()
