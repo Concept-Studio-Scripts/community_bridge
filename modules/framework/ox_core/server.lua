@@ -59,7 +59,16 @@ local function buildPlayerData(player)
 end
 
 local function buildGroupData(player)
-    local groups = player.getGroups() or {}
+    if not player then
+        return {
+            name = 'unemployed',
+            label = 'Unemployed',
+            grade = { name = '0', level = 0 },
+            isboss = false,
+            onduty = false,
+        }
+    end
+    local groups = player.getGroups and player.getGroups() or {}
     local allGroups = Ox.GetGroupsByType('job') or {}
 
     local primaryJobName = 'unemployed'
@@ -81,7 +90,7 @@ local function buildGroupData(player)
             level = primaryJobGrade,
         },
         isboss = false,
-        onduty = player.get('onDuty') or player.get('onduty') or false,
+        onduty = player.get and (player.get('onDuty') or player.get('onduty')) or false,
     }
 end
 
@@ -129,7 +138,13 @@ end
 ---@param citizenid string
 ---@return table | nil
 Framework.GetPlayerByIdentifier = function(citizenid)
-    local player = Ox.GetPlayerByUserId(tonumber(citizenid))
+    local id = tonumber(citizenid) or citizenid
+    ---GetPlayerIdentifier returns charId — prefer char lookup.
+    if Ox.GetPlayerFromCharId then
+        local player = Ox.GetPlayerFromCharId(tonumber(id) or id)
+        if player then return Framework.GetPlayer(player.source) end
+    end
+    local player = Ox.GetPlayerByUserId(tonumber(id))
     if not player then return end
     return Framework.GetPlayer(player.source)
 end
@@ -138,7 +153,12 @@ end
 ---@param citizenid string
 ---@return number | nil
 Framework.GetPlayerSource = function(citizenid)
-    local player = Ox.GetPlayerByUserId(tonumber(citizenid))
+    local id = tonumber(citizenid) or citizenid
+    if Ox.GetPlayerFromCharId then
+        local player = Ox.GetPlayerFromCharId(tonumber(id) or id)
+        if player then return player.source end
+    end
+    local player = Ox.GetPlayerByUserId(tonumber(id))
     if not player then return end
     return player.source
 end
@@ -162,8 +182,12 @@ end
 Framework.GetPlayerName = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local playerData = player.PlayerData
-    return playerData.charinfo.firstname, playerData.charinfo.lastname
+    local first = player.get and (player.get('firstName') or player.get('firstname')) or nil
+    local last = player.get and (player.get('lastName') or player.get('lastname')) or nil
+    if type(first) == 'string' and first ~= '' then
+        return first, type(last) == 'string' and last or ''
+    end
+    return nil
 end
 
 ---@description Adds the specified metadata key and value to the player's data.
@@ -174,7 +198,10 @@ end
 Framework.SetPlayerMetadata = function(src, metadata, value)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    return player.Functions.SetMetaData(metadata, value)
+    if type(player.set) == 'function' then
+        return player.set(metadata, value, true)
+    end
+    return nil
 end
 
 ---@description Gets the specified metadata key to the player's data.
@@ -196,7 +223,9 @@ Framework.AddStress = function(src, value)
     if not player then return end
     local currentStress = player.get('stress') or 0
     local newStress = Math.Clamp(currentStress + value, 0, 100)
-    player.Functions.SetMetaData('stress', newStress)
+    if type(player.set) == 'function' then
+        player.set('stress', newStress, true)
+    end
     TriggerClientEvent('hud:client:UpdateStress', src, newStress)
     return newStress
 end
@@ -210,7 +239,9 @@ Framework.RemoveStress = function(src, value)
     if not player then return end
     local currentStress = player.get('stress') or 0
     local newStress = Math.Clamp(currentStress - value, 0, 100)
-    player.Functions.SetMetaData('stress', newStress)
+    if type(player.set) == 'function' then
+        player.set('stress', newStress, true)
+    end
     TriggerClientEvent('hud:client:UpdateStress', src, newStress)
     return newStress
 end
@@ -224,7 +255,9 @@ Framework.AddHunger = function(src, value)
     if not player then return end
     local currentHunger = player.get('hunger') or 0
     local newHunger = Math.Clamp(currentHunger + value, 0, 100)
-    player.Functions.SetMetaData('hunger', newHunger)
+    if type(player.set) == 'function' then
+        player.set('hunger', newHunger, true)
+    end
     return newHunger
 end
 
@@ -237,7 +270,9 @@ Framework.AddThirst = function(src, value)
     if not player then return end
     local currentThirst = player.get('thirst') or 0
     local newThirst = Math.Clamp(currentThirst + value, 0, 100)
-    player.Functions.SetMetaData('thirst', newThirst)
+    if type(player.set) == 'function' then
+        player.set('thirst', newThirst, true)
+    end
     return newThirst
 end
 
@@ -289,7 +324,7 @@ end
 Framework.GetPlayerPhone = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    return player.PlayerData.charinfo.phone
+    return player.get('phoneNumber') or player.get('phone') or nil
 end
 
 ---@description Returns the gang name of the player.
@@ -298,8 +333,8 @@ end
 Framework.GetPlayerGang = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local playerData = player.PlayerData
-    return playerData.gang.name
+    local name, _grade = player.getGroupByType and player.getGroupByType('gang') or nil
+    return name or 'none'
 end
 
 ---@description This will get a table of player sources that have the specified job name.
@@ -328,6 +363,7 @@ end
 ---@return table | nil
 Framework.GetPlayerJobData = function(src)
     local playerData = Framework.GetPlayer(src)
+    if not playerData then return nil end
     local jobData = buildGroupData(playerData)
     return {
         jobName = jobData.name,
@@ -349,7 +385,10 @@ Framework.SetPlayerJob = function(src, name, grade)
     local player = Framework.GetPlayer(src)
     if not player then return end
     grade = tonumber(grade) or 0
-    return player.Functions.SetJob(name, grade)
+    if type(player.setGroup) == 'function' then
+        return player.setGroup(name, grade)
+    end
+    return nil
 end
 
 ---@description This will toggle the duty status of the player.
@@ -358,7 +397,10 @@ end
 Framework.SetPlayerDuty = function(src, status)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    return player.Functions.SetJobDuty(status)
+    if type(player.set) == 'function' then
+        return player.set('onDuty', status == true, true)
+    end
+    return nil
 end
 
 ---@description Returns the players duty status.
@@ -367,8 +409,9 @@ end
 Framework.GetPlayerDuty = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    if not player.PlayerData.job.onduty then return false end
-    return true
+    local duty = player.get('onDuty')
+    if duty == nil then duty = player.get('onduty') end
+    return duty and true or false
 end
 
 ---@description This will add money based on the type of account (money/bank)
@@ -379,12 +422,17 @@ end
 Framework.AddAccountBalance = function(src, _type, amount)
     local player = Framework.GetPlayer(src)
     if not player then return false end
+    amount = tonumber(amount) or 0
+    if amount <= 0 then return false end
     if _type == 'money' then _type = 'cash' end
-    if (_type == 'bank') then
-        return account.addBalance({ amount = amount })
-    else
-        return exports.ox_inventory:AddItem(src, 'money', amount)
+    if _type == 'bank' then
+        local account = player.getAccount and player.getAccount()
+        if not account or not account.addBalance then return false end
+        local result = account.addBalance({ amount = amount })
+        return type(result) == 'table' and result.success == true or result == true
     end
+    if GetResourceState('ox_inventory') ~= 'started' then return false end
+    return exports.ox_inventory:AddItem(src, 'money', amount) and true or false
 end
 
 ---@description This will remove money based on the type of account (money/bank)
@@ -395,12 +443,17 @@ end
 Framework.RemoveAccountBalance = function(src, _type, amount)
     local player = Framework.GetPlayer(src)
     if not player then return false end
+    amount = tonumber(amount) or 0
+    if amount <= 0 then return false end
     if _type == 'money' then _type = 'cash' end
-    if (_type == 'bank') then
-        return account.removeBalance({ amount = amount })
-    else
-        return exports.ox_inventory:RemoveItem(src, 'money', amount)
+    if _type == 'bank' then
+        local account = player.getAccount and player.getAccount()
+        if not account or not account.removeBalance then return false end
+        local result = account.removeBalance({ amount = amount })
+        return type(result) == 'table' and result.success == true or result == true
     end
+    if GetResourceState('ox_inventory') ~= 'started' then return false end
+    return exports.ox_inventory:RemoveItem(src, 'money', amount) and true or false
 end
 
 ---@description This will remove money based on the type of account (money/bank)
@@ -410,13 +463,14 @@ end
 Framework.GetAccountBalance = function(src, _type)
     local player = Framework.GetPlayer(src)
     if not player then return 0 end
-    local account = player.getAccount()
     if _type == 'money' then _type = 'cash' end
-    if (_type == 'bank') then
-        return account.get('balance')
-    else
-        return exports.ox_inventory:GetItemCount(src, "money")
+    if _type == 'bank' then
+        local account = player.getAccount and player.getAccount()
+        if not account or not account.get then return 0 end
+        return tonumber(account.get('balance')) or 0
     end
+    if GetResourceState('ox_inventory') ~= 'started' then return 0 end
+    return exports.ox_inventory:GetItemCount(src, 'money') or 0
 end
 
 ---@description Returns a table of owned vehicles for the player. format is {vehicle = vehicle, plate = plate}
@@ -482,7 +536,7 @@ RegisterNetEvent("ox:playerLoaded", function(playerId, userId, charId)
     TriggerEvent("community_bridge:Server:OnPlayerLoaded", playerId)
     local jobData = Framework.GetPlayerJobData(playerId)
     if not jobData then return end
-    Framework.AddJobCount(playerId, jobData.name)
+    Framework.AddJobCount(playerId, jobData.jobName)
 end)
 
 ---@description Event handler for when a player logs out in ox_core framework

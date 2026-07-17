@@ -12,7 +12,16 @@ local function getPlayerObject()
 end
 
 local function buildGroupData(player)
-    local groups = player.getGroups() or {}
+    if not player then
+        return {
+            name = 'unemployed',
+            label = 'Unemployed',
+            grade = { name = '0', level = 0 },
+            isboss = false,
+            onduty = false,
+        }
+    end
+    local groups = player.getGroups and player.getGroups() or {}
     local allGroups = Framework.GetFrameworkJobs() or {}
 
     local primaryJobName = 'unemployed'
@@ -34,7 +43,7 @@ local function buildGroupData(player)
             level = primaryJobGrade,
         },
         isboss = false,
-        onduty = player.get('onDuty') or player.get('onduty') or false,
+        onduty = player.get and (player.get('onDuty') or player.get('onduty')) or false,
     }
 end
 
@@ -123,7 +132,10 @@ end
 ---@return string
 Framework.GetPlayerName = function()
     local playerData = Framework.GetPlayerData()
-    return playerData.get('firstName'), player.get('lastName')
+    if not playerData or type(playerData.get) ~= 'function' then return nil, nil end
+    local first = playerData.get('firstName') or playerData.get('firstname')
+    local last = playerData.get('lastName') or playerData.get('lastname')
+    return first, last
 end
 
 ---@deprecated Deprecated: This will return the players job name, job label, job grade label and job grade level
@@ -133,6 +145,7 @@ end
 ---@return string
 Framework.GetPlayerJob = function()
     local jobData = Framework.GetPlayerJobData()
+    if not jobData then return end
     return jobData.jobName, jobData.jobLabel, jobData.gradeName, jobData.gradeRank
 end
 
@@ -140,6 +153,7 @@ end
 ---@return table
 Framework.GetPlayerJobData = function()
     local playerData = Framework.GetPlayerData()
+    if not playerData then return nil end
     local jobData = buildGroupData(playerData)
     return {
         jobName = jobData.name,
