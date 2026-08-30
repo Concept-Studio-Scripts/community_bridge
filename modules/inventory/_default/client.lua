@@ -32,15 +32,41 @@ end
 ---@description This will return the players inventory in the format of {name, label, count, slot, metadata}
 ---@return table
 Inventory.GetPlayerInventory = function()
-    return Framework:GetPlayerInventory()
+    return Framework.GetPlayerInventory()
 end
 
----@description This will get the image path for this item, if not found will return placeholder.
+local PLACEHOLDER_IMAGE = "https://avatars.githubusercontent.com/u/47620135"
+
+local function resourceFileExists(resource, relativePath)
+    if GetResourceState(resource) ~= 'started' then return false end
+    local ok, content = pcall(LoadResourceFile, resource, relativePath)
+    return ok and type(content) == 'string' and content ~= ''
+end
+
+---@description Image path for NUI. Silent when missing (no console spam).
 ---@param item string
 ---@return string
 Inventory.GetImagePath = function(item)
-    print("No get image path for this inventory, using default.")
-    return "https://avatars.githubusercontent.com/u/47620135"
+    if not item or item == '' then return PLACEHOLDER_IMAGE end
+    item = Inventory.StripPNG(Inventory.StripWebp(item))
+
+    local candidates = {
+        { 'concept_fortuna', ('web/public/items/%s.png'):format(item) },
+        { 'concept_fortuna', ('web/dist/items/%s.png'):format(item) },
+        { 'ox_inventory', ('web/images/%s.png'):format(item) },
+        { 'esx_inventoryhud', ('html/img/items/%s.png'):format(item) },
+        { 'esx_inventory', ('web/images/%s.png'):format(item) },
+        { 'qb-inventory', ('html/images/%s.png'):format(item) },
+    }
+
+    for i = 1, #candidates do
+        local resource, rel = candidates[i][1], candidates[i][2]
+        if resourceFileExists(resource, rel) then
+            return ('nui://%s/%s'):format(resource, rel)
+        end
+    end
+
+    return PLACEHOLDER_IMAGE
 end
 
 ---@description This will remove the file extension from the item name if present.
@@ -68,7 +94,7 @@ end
 Inventory.Items = function()
     if not Framework.Shared or not Framework.Shared.Items then
         local itemList = Framework.ItemList() or { Items = {} }
-        return itemList.Items
+        return itemList.Items or itemList or {}
     end
     return Framework.Shared.Items
 end

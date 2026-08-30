@@ -164,43 +164,67 @@ end
 ---@param requiredCount number (optional)
 ---@return boolean
 Framework.HasItem = function(item, requiredCount)
-	local hasItem = ESX.SearchInventory(item, true)
-    return hasItem >= (requiredCount or 1)
+    local hasItem = ESX.SearchInventory(item, true)
+    return (tonumber(hasItem) or 0) >= (requiredCount or 1)
 end
 
 ---@description This is an internal function used as a fallback, please use the Inventory.GetItemCount instead.
 --- @param item string
 --- @return number
 Framework.GetItemCount = function(item)
+    if not item then return 0 end
+    -- ESX.SearchInventory is authoritative; do NOT index inventory[item] (array-backed)
+    local ok, count = pcall(ESX.SearchInventory, item, true)
+    if ok and type(count) == 'number' then return count end
     local inventory = Framework.GetPlayerInventory()
-    if not inventory then return 0 end
-    return inventory[item].count or 0
+    if type(inventory) ~= 'table' then return 0 end
+    local total = 0
+    for _, entry in pairs(inventory) do
+        if type(entry) == 'table' and entry.name == item then
+            total = total + (tonumber(entry.count) or 0)
+        end
+    end
+    return total
 end
 
 ---@description Return the item info in oxs format, {name, label, stack, weight, description, image}
 ---@param item string
 ---@return table
 Framework.GetItemInfo = function(item)
-    return {}, print("ESX has not implemented GetItemInfo for this framework. Please ensure the inventory you are using is supported and start order is correct.")
+    if not item then return {} end
+    local list = Framework.ItemList()
+    local items = list and (list.Items or list) or {}
+    local info = items[item]
+    if type(info) ~= 'table' then return {} end
+    return {
+        name = item,
+        label = info.label or item,
+        stack = info.stack ~= false,
+        weight = info.weight or 0,
+        description = info.description or '',
+        image = info.image,
+    }
 end
 
 ---@description This is an internal function used as a fallback, please use the Inventory.GetPlayerInventory instead.
 --- @return table {name, label, count, slot, metadata, stack, close, weight}
 Framework.GetPlayerInventory = function()
     local playerData = Framework.GetPlayerData()
-    if not playerData then return {} end
+    if not playerData or type(playerData.inventory) ~= 'table' then return {} end
     local repack = {}
-    for k, v in pairs(playerData.inventory) do
-        repack[k] = {
-            name = v.name,
-            label = v.label,
-            count = v.count,
-            slot = 0,
-            metadata = {},
-            stack = false,
-            close = v.usable or false,
-            weight = v.weight or 0,
-        }
+    for _, v in pairs(playerData.inventory) do
+        if type(v) == 'table' and v.name and (tonumber(v.count) or 0) > 0 then
+            repack[#repack + 1] = {
+                name = v.name,
+                label = v.label or v.name,
+                count = tonumber(v.count) or 0,
+                slot = 0,
+                metadata = {},
+                stack = true,
+                close = v.usable or false,
+                weight = v.weight or 0,
+            }
+        end
     end
     return repack
 end

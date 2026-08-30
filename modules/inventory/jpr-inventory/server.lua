@@ -47,9 +47,94 @@ end
 ---@param item string
 ---@return table
 Inventory.GetItemInfo = function(item)
-    local itemTable = Framework.GetItemInfo(item)
-    itemTable.image = Inventory.GetImagePath(item)
-    return itemTable
+    local itemTable = nil
+    if Framework and Framework.GetItemInfo then
+        local ok, info = pcall(Framework.GetItemInfo, item)
+        if ok and type(info) == 'table' then itemTable = info end
+    end
+    if (not itemTable or not (itemTable.name or itemTable.label)) and Framework and Framework.Shared and Framework.Shared.Items then
+        itemTable = Framework.Shared.Items[item]
+    end
+    if type(itemTable) ~= 'table' then return {} end
+    return {
+        name = itemTable.name or item,
+        label = itemTable.label or item,
+        stack = itemTable.unique ~= true and itemTable.stack ~= false,
+        weight = itemTable.weight,
+        description = itemTable.description,
+        image = Inventory.GetImagePath(itemTable.image or item),
+    }
+end
+
+---@description This will return the entire items table from the inventory.
+---@return table
+Inventory.Items = function()
+    if Framework and Framework.Shared and Framework.Shared.Items then
+        return Framework.Shared.Items
+    end
+    if Framework and Framework.ItemList then
+        local ok, list = pcall(Framework.ItemList)
+        if ok and type(list) == 'table' then
+            return list.Items or list
+        end
+    end
+    return {}
+end
+
+---@description This will return the count of the item in the players inventory.
+---@param src number
+---@param item string
+---@param metadata table (optional)
+---@return number
+Inventory.GetItemCount = function(src, item, metadata)
+    if metadata then
+        local total = 0
+        for _, v in pairs(Inventory.GetPlayerInventory(src) or {}) do
+            if v.name == item and v.metadata == metadata then
+                total = total + (v.count or v.amount or 0)
+            end
+        end
+        return total
+    end
+    if jpr.GetItemCount then
+        local ok, n = pcall(function() return jpr:GetItemCount(src, item) end)
+        if ok and type(n) == 'number' then return n end
+    end
+    if Framework and Framework.GetItemCount then
+        local ok, n = pcall(Framework.GetItemCount, src, item, metadata)
+        if ok and type(n) == 'number' then return n end
+    end
+    local total = 0
+    for _, v in pairs(Inventory.GetPlayerInventory(src) or {}) do
+        if v.name == item then
+            total = total + (v.count or v.amount or 0)
+        end
+    end
+    return total
+end
+
+---@description This wil return the players inventory.
+---@param src number
+---@return table
+Inventory.GetPlayerInventory = function(src)
+    if Framework and Framework.GetPlayerInventory then
+        local ok, inv = pcall(Framework.GetPlayerInventory, src)
+        if ok and type(inv) == 'table' then return inv end
+    end
+    if jpr.GetInventory then
+        local ok, inv = pcall(function() return jpr:GetInventory(src) end)
+        if ok and type(inv) == 'table' then return inv end
+    end
+    return {}
+end
+
+---@description Space check — prefer jpr export when present.
+Inventory.CanCarryItem = function(src, item, count)
+    if jpr.CanAddItem then
+        local ok, result = pcall(function() return jpr:CanAddItem(src, item, count) end)
+        if ok and result ~= nil then return result and true or false end
+    end
+    return true
 end
 
 ---@description Returns the specified slot data as a table.

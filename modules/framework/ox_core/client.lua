@@ -107,18 +107,23 @@ Framework.GetAccountBalance = function(_type)
     return balance
 end
 
----@description This will get the hunger of a player
+---@description This will get the hunger of a player (HUD “remaining”: 100 = full).
+--- ox_core stores deprivation (0 = full, 100 = starving) via getStatus — not metadata.
 ---@return number
 Framework.GetHunger = function()
-    local hunger = Framework.GetPlayerMetaData('hunger') or 0
-    return math.floor((hunger) + 0.5) or 0
+    local player = getPlayerObject()
+    if not player or type(player.getStatus) ~= 'function' then return 0 end
+    local raw = player.getStatus('hunger') or 0
+    return math.floor((100 - raw) + 0.5)
 end
 
----@description This will get the thirst of a player
+---@description This will get the thirst of a player (HUD “remaining”: 100 = full).
 ---@return number
 Framework.GetThirst = function()
-    local thirst = Framework.GetPlayerMetaData('thirst') or 0
-    return math.floor((thirst) + 0.5) or 0
+    local player = getPlayerObject()
+    if not player or type(player.getStatus) ~= 'function' then return 0 end
+    local raw = player.getStatus('thirst') or 0
+    return math.floor((100 - raw) + 0.5)
 end
 
 ---@description This will get the players identifier (citizenid) etc.

@@ -246,43 +246,48 @@ Framework.RemoveStress = function(src, value)
     return newStress
 end
 
----@description Adds the specified value from the player's hunger level.
+---@description Adds to hunger “remaining” (ESX-style). ox status is deprivation — removeStatus.
 ---@param src number
 ---@param value number
 ---@return number | nil
 Framework.AddHunger = function(src, value)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local currentHunger = player.get('hunger') or 0
-    local newHunger = Math.Clamp(currentHunger + value, 0, 100)
-    if type(player.set) == 'function' then
-        player.set('hunger', newHunger, true)
+    value = tonumber(value) or 0
+    if type(player.removeStatus) == 'function' and value > 0 then
+        player.removeStatus('hunger', value)
+    elseif type(player.addStatus) == 'function' and value < 0 then
+        player.addStatus('hunger', -value)
     end
-    return newHunger
+    local raw = (type(player.getStatus) == 'function' and player.getStatus('hunger')) or 0
+    return math.floor((100 - raw) + 0.5)
 end
 
----@description Adds the specified value from the player's thirst level.
+---@description Adds to thirst “remaining” (ESX-style).
 ---@param src number
 ---@param value number
 ---@return number | nil
 Framework.AddThirst = function(src, value)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local currentThirst = player.get('thirst') or 0
-    local newThirst = Math.Clamp(currentThirst + value, 0, 100)
-    if type(player.set) == 'function' then
-        player.set('thirst', newThirst, true)
+    value = tonumber(value) or 0
+    if type(player.removeStatus) == 'function' and value > 0 then
+        player.removeStatus('thirst', value)
+    elseif type(player.addStatus) == 'function' and value < 0 then
+        player.addStatus('thirst', -value)
     end
-    return newThirst
+    local raw = (type(player.getStatus) == 'function' and player.getStatus('thirst')) or 0
+    return math.floor((100 - raw) + 0.5)
 end
 
----@description This will return the players hunger level.
+---@description Hunger remaining for HUD (100 = full). ox getStatus is deprivation.
 ---@param src number
 ---@return number | nil
 Framework.GetHunger = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return 0 end
-    return math.floor((player.get('hunger') or 0) + 0.5) or 0
+    local raw = (type(player.getStatus) == 'function' and player.getStatus('hunger')) or 0
+    return math.floor((100 - raw) + 0.5)
 end
 
 ---@description This will return a boolean if the player is dead or in last stand.
@@ -309,13 +314,14 @@ Framework.RevivePlayer = function(src)
     return true
 end
 
----@description This will return the players thirst level.
+---@description Thirst remaining for HUD (100 = full).
 ---@param src number
 ---@return number| nil
 Framework.GetThirst = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return 0 end
-    return math.floor((player.get('thirst') or 0) + 0.5) or 0
+    local raw = (type(player.getStatus) == 'function' and player.getStatus('thirst')) or 0
+    return math.floor((100 - raw) + 0.5)
 end
 
 ---@description Returns the phone number of the player.
