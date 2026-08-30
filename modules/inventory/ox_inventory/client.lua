@@ -65,7 +65,19 @@ end
 ---@description This will return the players inventory in the format of {name, label, count, slot, metadata}
 ---@return table
 Inventory.GetPlayerInventory = function()
-    return ox_inventory:GetPlayerItems()
+    -- ox_inventory export surface differs across versions/builds.
+    -- Use a safe chain so bridge consumers can always read inventory.
+    local ok, items = pcall(function()
+        return ox_inventory:GetPlayerItems()
+    end)
+    if ok and type(items) == 'table' then return items end
+
+    ok, items = pcall(function()
+        return ox_inventory:GetInventoryItems()
+    end)
+    if ok and type(items) == 'table' then return items end
+
+    return {}
 end
 
 return Inventory

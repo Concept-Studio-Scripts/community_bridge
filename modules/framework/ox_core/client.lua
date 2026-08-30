@@ -12,7 +12,16 @@ local function getPlayerObject()
 end
 
 local function buildGroupData(player)
-    local groups = player.getGroups() or {}
+    if not player then
+        return {
+            name = 'unemployed',
+            label = 'Unemployed',
+            grade = { name = '0', level = 0 },
+            isboss = false,
+            onduty = false,
+        }
+    end
+    local groups = player.getGroups and player.getGroups() or {}
     local allGroups = Framework.GetFrameworkJobs() or {}
 
     local primaryJobName = 'unemployed'
@@ -34,7 +43,7 @@ local function buildGroupData(player)
             level = primaryJobGrade,
         },
         isboss = false,
-        onduty = player.get('onDuty') or player.get('onduty') or false,
+        onduty = player.get and (player.get('onDuty') or player.get('onduty')) or false,
     }
 end
 
@@ -98,18 +107,23 @@ Framework.GetAccountBalance = function(_type)
     return balance
 end
 
----@description This will get the hunger of a player
+---@description This will get the hunger of a player (HUD “remaining”: 100 = full).
+--- ox_core stores deprivation (0 = full, 100 = starving) via getStatus — not metadata.
 ---@return number
 Framework.GetHunger = function()
-    local hunger = Framework.GetPlayerMetaData('hunger') or 0
-    return math.floor((hunger) + 0.5) or 0
+    local player = getPlayerObject()
+    if not player or type(player.getStatus) ~= 'function' then return 0 end
+    local raw = player.getStatus('hunger') or 0
+    return math.floor((100 - raw) + 0.5)
 end
 
----@description This will get the thirst of a player
+---@description This will get the thirst of a player (HUD “remaining”: 100 = full).
 ---@return number
 Framework.GetThirst = function()
-    local thirst = Framework.GetPlayerMetaData('thirst') or 0
-    return math.floor((thirst) + 0.5) or 0
+    local player = getPlayerObject()
+    if not player or type(player.getStatus) ~= 'function' then return 0 end
+    local raw = player.getStatus('thirst') or 0
+    return math.floor((100 - raw) + 0.5)
 end
 
 ---@description This will get the players identifier (citizenid) etc.
@@ -136,6 +150,7 @@ end
 ---@return string
 Framework.GetPlayerJob = function()
     local jobData = Framework.GetPlayerJobData()
+    if not jobData then return end
     return jobData.jobName, jobData.jobLabel, jobData.gradeName, jobData.gradeRank
 end
 
@@ -143,6 +158,7 @@ end
 ---@return table
 Framework.GetPlayerJobData = function()
     local playerData = Framework.GetPlayerData()
+    if not playerData then return nil end
     local jobData = buildGroupData(playerData)
     return {
         jobName = jobData.name,

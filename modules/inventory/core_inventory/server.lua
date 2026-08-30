@@ -11,6 +11,27 @@ Inventory.GetResourceName = function()
     return "core_inventory"
 end
 
+---This will return a table with the item info, {name, label, stack, weight, description, image}
+---@param item string
+---@return table
+Inventory.GetItemInfo = function(item)
+    local all = Inventory.Items and Inventory.Items() or nil
+    local itemData = type(all) == 'table' and all[item] or nil
+    if not itemData and Framework and Framework.GetItemInfo then
+        local ok, info = pcall(Framework.GetItemInfo, item)
+        if ok and type(info) == 'table' then itemData = info end
+    end
+    if type(itemData) ~= 'table' then return {} end
+    return {
+        name = itemData.name or item,
+        label = itemData.label or item,
+        stack = itemData.stack,
+        weight = itemData.weight,
+        description = itemData.description,
+        image = Inventory.GetImagePath(itemData.image or item),
+    }
+end
+
 ---This will add an item, and return true or false based on success
 ---@param src number
 ---@param item string

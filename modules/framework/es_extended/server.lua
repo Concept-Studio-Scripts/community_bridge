@@ -173,12 +173,12 @@ end
 ---@param metadata table (optional)
 ---@return number
 Framework.GetItemCount = function(src, item, metadata)
-    if metadata then
-        print("ESX does not support item metadata searches, please ensure you are using a supported inventory system or that you have the correct start order.")
-    end
+    -- metadata ignored on default ESX inventory (no per-slot meta)
     local xPlayer = Framework.GetPlayer(src)
-    if not xPlayer then return 0 end
-    return xPlayer.getInventoryItem(item).count
+    if not xPlayer or not item then return 0 end
+    local invItem = xPlayer.getInventoryItem(item)
+    if type(invItem) ~= 'table' then return 0 end
+    return tonumber(invItem.count) or 0
 end
 
 ---@description This will return a boolean if the player has the item.
@@ -196,19 +196,20 @@ end
 ---@param src number
 ---@return table {name, count, metadata, slot}
 Framework.GetPlayerInventory = function(src)
-    print("ESX does not support item metadata or slots, please ensure you are using a supported inventory system or that you have the correct start order.")
     local xPlayer = Framework.GetPlayer(src)
     if not xPlayer then return {} end
     local playerItems = xPlayer.getInventory()
+    if type(playerItems) ~= 'table' then return {} end
     local repackedTable = {}
     for _, v in pairs(playerItems) do
-        if v.count > 0 then
-            table.insert(repackedTable, {
+        if type(v) == 'table' and v.name and (tonumber(v.count) or 0) > 0 then
+            repackedTable[#repackedTable + 1] = {
                 name = v.name,
-                count = v.count,
-                metadata = {}, -- ESX does not support item metadata
-                slot = 0, -- ESX does not support item slots
-            })
+                label = v.label or v.name,
+                count = tonumber(v.count) or 0,
+                metadata = {},
+                slot = 0,
+            }
         end
     end
     return repackedTable
@@ -465,9 +466,9 @@ Framework.GetAccountBalance = function(src, _type)
     local xPlayer = Framework.GetPlayer(src)
     if not xPlayer then return 0 end
     if _type == 'cash' then _type = 'money' end
-    local balance = xPlayer.getAccount(_type).money or 0
-    if balance <= 0 then return 0 end
-    return balance
+    local account = xPlayer.getAccount(_type)
+    if type(account) ~= 'table' then return 0 end
+    return tonumber(account.money) or 0
 end
 
 ---@description This will add an item, and return true or false based on success
@@ -479,10 +480,20 @@ end
 ---@param metadata table (optional)
 ---@return boolean
 Framework.AddItem = function(src, item, count, slot, metadata)
-    if slot then print("ESX does not support item slots, please ensure you are using a supported inventory system or that you have the correct start order.") end
-    if metadata then print("ESX does not support item metadata, please ensure you are using a supported inventory system or that you have the correct start order.") end
     local xPlayer = Framework.GetPlayer(src)
-    if not xPlayer then return false end
+    if not xPlayer or not item then return false end
+    count = tonumber(count) or 0
+    if count <= 0 then return false end
+
+    -- Unknown / unloaded item — do not pretend success
+    local invItem = xPlayer.getInventoryItem(item)
+    if type(invItem) ~= 'table' then
+        return false
+    end
+    if xPlayer.canCarryItem and not xPlayer.canCarryItem(item, count) then
+        return false
+    end
+
     xPlayer.addInventoryItem(item, count)
     TriggerClientEvent("community_bridge:client:inventory:updateInventory", src, { action = "add", item = item, count = count, slot = slot, metadata = metadata })
     return true
@@ -497,15 +508,16 @@ end
 --- @param metadata table (optional)
 --- @return boolean
 Framework.RemoveItem = function(src, item, amount, slot, metadata)
-    if slot then
-        print("ESX does not support item slots, please ensure you are using a supported inventory system or that you have the correct start order.")
-    end
-    if metadata then
-        print("ESX does not support item metadata, please ensure you are using a supported inventory system or that you have the correct start order.")
-    end
     local xPlayer = Framework.GetPlayer(src)
-    if not xPlayer then return false end
+    if not xPlayer or not item then return false end
+    amount = tonumber(amount) or 0
+    if amount <= 0 then return false end
+    local invItem = xPlayer.getInventoryItem(item)
+    if type(invItem) ~= 'table' or (tonumber(invItem.count) or 0) < amount then
+        return false
+    end
     xPlayer.removeInventoryItem(item, amount)
+    TriggerClientEvent("community_bridge:client:inventory:updateInventory", src, { action = "remove", item = item, count = amount, slot = slot, metadata = metadata })
     return true
 end
 
