@@ -162,8 +162,12 @@ end
 Framework.GetPlayerName = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local playerData = player.PlayerData
-    return playerData.charinfo.firstname, playerData.charinfo.lastname
+    -- ox_core stores RP name via player.get('firstName')/('lastName'); handle case variants and direct props
+    local first = player.get('firstName') or player.get('firstname') or player.get('FirstName') or player.firstName or player.firstname
+    local last  = player.get('lastName')  or player.get('lastname')  or player.get('LastName')  or player.lastName  or player.lastname
+    if type(first) ~= 'string' or first == '' then first = nil end
+    if type(last) ~= 'string' then last = nil end
+    return first, last
 end
 
 ---@description Adds the specified metadata key and value to the player's data.

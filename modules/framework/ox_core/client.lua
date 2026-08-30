@@ -123,7 +123,10 @@ end
 ---@return string
 Framework.GetPlayerName = function()
     local playerData = Framework.GetPlayerData()
-    return playerData.get('firstName'), player.get('lastName')
+    if not playerData or type(playerData.get) ~= 'function' then return nil, nil end
+    local first = playerData.get('firstName') or playerData.get('firstname')
+    local last = playerData.get('lastName') or playerData.get('lastname')
+    return first, last
 end
 
 ---@deprecated Deprecated: This will return the players job name, job label, job grade label and job grade level
