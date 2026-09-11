@@ -6,92 +6,137 @@ Framework = Framework or {}
 
 local Ox = require '@ox_core.lib.init'
 
-local function buildPlayerData(player)
-    local groups = player.getGroups() or {}
-    local allGroups = {}
+local UNEMPLOYED = {
+    name = 'unemployed',
+    label = 'Unemployed',
+    grade = { name = '0', level = 0 },
+    isboss = false,
+    onduty = false,
+}
 
-    local primaryJobName = 'unemployed'
-    local primaryJobGrade = 0
+local function oxInventoryStarted()
+    return GetResourceState('ox_inventory') == 'started'
+end
 
-    for groupName, grade in pairs(groups) do
-        primaryJobName = groupName
-        primaryJobGrade = grade
-        break
+--- ox_inventory item definitions (empty when the inventory is unavailable).
+---@return table
+local function oxItems()
+    if not oxInventoryStarted() then return {} end
+    local ok, items = pcall(function()
+        return exports.ox_inventory:Items()
+    end)
+    if ok and type(items) == 'table' then return items end
+    return {}
+end
+
+--- Job definitions keyed by group name (parity with qbx_core).
+---@return table
+local function getFrameworkJobs()
+    local map = {}
+    local names = Ox.GetGroupsByType and Ox.GetGroupsByType('job') or {}
+    for i = 1, #names do
+        local name = names[i]
+        local def = Ox.GetGroup and Ox.GetGroup(name) or nil
+        map[name] = def or { name = name, label = name }
     end
+    return map
+end
 
-    local groupDef = allGroups[primaryJobName]
+---@param jobDef table|nil
+---@param grade number|string
+---@return string
+local function gradeLabel(jobDef, grade)
+    local grades = type(jobDef) == 'table' and jobDef.grades or nil
+    if type(grades) == 'table' then
+        local label = grades[grade] or grades[tostring(grade)]
+        if label ~= nil then return tostring(label) end
+    end
+    return tostring(grade)
+end
 
+--- ox group grades map to account roles (owner/manager/...). Management roles
+--- count as "boss" so HUD boss checks match qb-core/qbx_core.
+---@param jobDef table|nil
+---@param grade number|string
+---@return boolean
+local function gradeIsBoss(jobDef, grade)
+    local roles = type(jobDef) == 'table' and jobDef.accountRoles or nil
+    if type(roles) ~= 'table' then return false end
+    local role = roles[grade] or roles[tostring(grade)]
+    return role == 'owner' or role == 'manager'
+end
+
+--- Prefer the active group (ox_core's primary job) over arbitrary pairs order.
+---@param player table|nil
+---@return table
+local function buildGroupData(player)
+    if not player then return UNEMPLOYED end
+
+    local groups = (type(player.getGroups) == 'function' and player.getGroups()) or {}
+    local activeGroup = type(player.get) == 'function' and player.get('activeGroup') or nil
+
+    local primaryName, primaryGrade
+    if activeGroup and groups[activeGroup] then
+        primaryName, primaryGrade = activeGroup, groups[activeGroup]
+    else
+        for groupName, grade in pairs(groups) do
+            primaryName, primaryGrade = groupName, grade
+            break
+        end
+    end
+    if not primaryName then return UNEMPLOYED end
+
+    local jobDef = Ox.GetGroup and Ox.GetGroup(primaryName) or nil
     return {
-        source = player.source,
-        citizenid = tostring(player.userId),
-        charinfo = {
-            firstname = player.get('firstName') or '',
-            lastname = player.get('lastName') or '',
-            birthdate = player.get('dateOfBirth') or '',
-            phone = player.get('phoneNumber') or '',
-        },
-        job = {
-            name = primaryJobName,
-            label = groupDef and groupDef.label or primaryJobName,
-            grade = {
-                name = tostring(primaryJobGrade),
-                level = primaryJobGrade,
-            },
-            isboss = false,
-            onduty = player.get('onDuty') or player.get('onduty') or false,
-            type = groupDef and groupDef.type or 'job',
-        },
-        gang = {
-            name = 'none',
-            label = 'None',
-            grade = {
-                name = '0',
-                level = 0,
-            },
-        },
-        money = {
-            cash = player.getAccount('money') or 0,
-            bank = player.getAccount('bank') or 0,
-            black_money = player.getAccount('black_money') or 0,
-        },
-        metadata = player.get('metadata') or {},
+        name = primaryName,
+        label = (type(jobDef) == 'table' and jobDef.label) or primaryName,
+        grade = { name = gradeLabel(jobDef, primaryGrade), level = primaryGrade },
+        isboss = gradeIsBoss(jobDef, primaryGrade),
+        onduty = activeGroup == primaryName,
     }
 end
 
-local function buildGroupData(player)
-    if not player then
-        return {
-            name = 'unemployed',
-            label = 'Unemployed',
-            grade = { name = '0', level = 0 },
-            isboss = false,
-            onduty = false,
-        }
+--- Returns the character's default account (bank). Falls back to the charId
+--- lookup used by older ox_core builds.
+---@param player table|nil
+---@return table|nil
+local function getCharacterAccount(player)
+    if not player then return nil end
+    if type(player.getAccount) == 'function' then
+        local ok, account = pcall(function() return player.getAccount() end)
+        if ok and type(account) == 'table' then return account end
     end
-    local groups = player.getGroups and player.getGroups() or {}
-    local allGroups = Ox.GetGroupsByType('job') or {}
-
-    local primaryJobName = 'unemployed'
-    local primaryJobGrade = 0
-
-    for groupName, grade in pairs(groups) do
-        primaryJobName = groupName
-        primaryJobGrade = grade
-        break
+    if player.charId and type(Ox.GetCharacterAccount) == 'function' then
+        local ok, account = pcall(Ox.GetCharacterAccount, player.charId)
+        if ok and type(account) == 'table' then return account end
     end
+    return nil
+end
 
-    local groupDef = allGroups[primaryJobName]
+---@param account table|nil
+---@return number|nil
+local function accountBalance(account)
+    if type(account) ~= 'table' then return nil end
+    if type(account.get) == 'function' then
+        local ok, balance = pcall(function() return account.get('balance') end)
+        if ok then
+            local n = tonumber(balance)
+            if n then return math.floor(n + 0.5) end
+        end
+    end
+    local n = tonumber(account.balance)
+    if n then return math.floor(n + 0.5) end
+    return nil
+end
 
-    return {
-        name = primaryJobName,
-        label = groupDef and groupDef.label or primaryJobName,
-        grade = {
-            name = tostring(primaryJobGrade),
-            level = primaryJobGrade,
-        },
-        isboss = false,
-        onduty = player.get and (player.get('onDuty') or player.get('onduty')) or false,
-    }
+--- ox_core stores cash as the ox_inventory `money` item; the character account
+--- is the bank. Any other type is treated as an inventory item name.
+---@param _type string|nil
+---@return string kind, string|nil item
+local function resolveMoneyKind(_type)
+    if _type == 'bank' then return 'bank', nil end
+    if _type == nil or _type == '' or _type == 'money' or _type == 'cash' then return 'cash', 'money' end
+    return 'item', tostring(_type)
 end
 
 ---@description This will return the name of the framework in use.
@@ -112,17 +157,21 @@ end
 ---@return boolean
 Framework.GetIsFrameworkAdmin = function(src)
     if not src then return false end
-    return IsPlayerAceAllowed(src, 'command') or IsPlayerAceAllowed(src, 'group.admin')
+    if IsPlayerAceAllowed(src, 'command') or IsPlayerAceAllowed(src, 'group.admin') then return true end
+    local player = Framework.GetPlayer(src)
+    if not player or type(player.getGroupByType) ~= 'function' then return false end
+    local ok, groupName = pcall(function() return player.getGroupByType('admin') end)
+    return ok and groupName ~= nil or false
 end
 
----@description This will return the citizen ID of the player.
+---@description This will return the citizen ID of the player (charId).
 ---@param src number
 ---@return string | nil
 Framework.GetPlayerIdentifier = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local identifier = player.charId
-    return tostring(identifier) or nil
+    if player.charId == nil then return end
+    return tostring(player.charId)
 end
 
 ---@description Returns the player data of the specified source in the framework defualt format.
@@ -163,16 +212,20 @@ Framework.GetPlayerSource = function(citizenid)
     return player.source
 end
 
----@description Returns a table of the jobs in the framework.
+---@description Returns a table of the jobs in the framework, keyed by group name.
 ---@return table
-Framework.GetFrameworkJobs = function()
-    return Ox.GetGroupsByType('job')
-end
+Framework.GetFrameworkJobs = getFrameworkJobs
 
----@description This will return a table of all logged in players
+---@description This will return a table of all logged in player sources
 ---@return table
 Framework.GetPlayers = function()
-    return Ox.GetPlayers()
+    local players = Ox.GetPlayers() or {}
+    local sources = {}
+    for i = 1, #players do
+        local src = players[i].source
+        if src then sources[#sources + 1] = src end
+    end
+    return sources
 end
 
 ---@description Returns the first and last name of the player.
@@ -192,7 +245,17 @@ Framework.GetPlayerName = function(src)
     return first, last
 end
 
+---@description Returns the player date of birth.
+---@param src number
+---@return string | nil
+Framework.GetPlayerDob = function(src)
+    local player = Framework.GetPlayer(src)
+    if not player or type(player.get) ~= 'function' then return end
+    return player.get('dateOfBirth')
+end
+
 ---@description Adds the specified metadata key and value to the player's data.
+---Stress is special-cased to ox_core's status store (the canonical source).
 ---@param src number
 ---@param metadata string
 ---@param value any
@@ -200,6 +263,12 @@ end
 Framework.SetPlayerMetadata = function(src, metadata, value)
     local player = Framework.GetPlayer(src)
     if not player then return end
+    if metadata == 'stress' and type(player.setStatus) == 'function' then
+        local ok = pcall(function()
+            player.setStatus('stress', Math.Clamp(tonumber(value) or 0, 0, 100))
+        end)
+        return ok
+    end
     if type(player.set) == 'function' then
         return player.set(metadata, value, true)
     end
@@ -207,13 +276,28 @@ Framework.SetPlayerMetadata = function(src, metadata, value)
 end
 
 ---@description Gets the specified metadata key to the player's data.
+---Stress is special-cased to ox_core's status store (the canonical source).
 ---@param src number
 ---@param metadata string
 ---@return any | nil
 Framework.GetPlayerMetadata = function(src, metadata)
     local player = Framework.GetPlayer(src)
     if not player then return end
+    if metadata == 'stress' and type(player.getStatus) == 'function' then
+        local ok, raw = pcall(function() return player.getStatus('stress') end)
+        if ok and type(raw) == 'number' then return raw end
+    end
     return player.get(metadata) or false
+end
+
+---@description Returns the player's stress (0-100). ox_core stores stress as a status.
+---@param src number
+---@return number
+Framework.GetStress = function(src)
+    local player = Framework.GetPlayer(src)
+    if not player then return 0 end
+    local raw = (type(player.getStatus) == 'function' and player.getStatus('stress')) or 0
+    return math.floor((tonumber(raw) or 0) + 0.5)
 end
 
 ---@description Adds the specified value to the player's stress level and updates the client HUD.
@@ -223,10 +307,10 @@ end
 Framework.AddStress = function(src, value)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local currentStress = player.get('stress') or 0
-    local newStress = Math.Clamp(currentStress + value, 0, 100)
-    if type(player.set) == 'function' then
-        player.set('stress', newStress, true)
+    local currentStress = (type(player.getStatus) == 'function' and player.getStatus('stress')) or 0
+    local newStress = Math.Clamp((tonumber(currentStress) or 0) + (tonumber(value) or 0), 0, 100)
+    if type(player.setStatus) == 'function' then
+        player.setStatus('stress', newStress)
     end
     TriggerClientEvent('hud:client:UpdateStress', src, newStress)
     return newStress
@@ -239,10 +323,10 @@ end
 Framework.RemoveStress = function(src, value)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local currentStress = player.get('stress') or 0
-    local newStress = Math.Clamp(currentStress - value, 0, 100)
-    if type(player.set) == 'function' then
-        player.set('stress', newStress, true)
+    local currentStress = (type(player.getStatus) == 'function' and player.getStatus('stress')) or 0
+    local newStress = Math.Clamp((tonumber(currentStress) or 0) - (tonumber(value) or 0), 0, 100)
+    if type(player.setStatus) == 'function' then
+        player.setStatus('stress', newStress)
     end
     TriggerClientEvent('hud:client:UpdateStress', src, newStress)
     return newStress
@@ -305,14 +389,14 @@ end
 ---@param src number
 ---@return boolean
 Framework.RevivePlayer = function(src)
-    src = tonumber(src)
-    if not src then return false end
-    local player = Framework.GetPlayer(src)
+    local srcId = tonumber(src)
+    if not srcId then return false end
+    local player = Framework.GetPlayer(srcId)
     if player then
         player.setStatus('dead', false)
         player.set('dead', false)
     end
-    TriggerClientEvent('hospital:client:Revive', src)
+    TriggerClientEvent('hospital:client:Revive', srcId)
     return true
 end
 
@@ -341,7 +425,7 @@ end
 Framework.GetPlayerGang = function(src)
     local player = Framework.GetPlayer(src)
     if not player then return end
-    local name, _grade = player.getGroupByType and player.getGroupByType('gang') or nil
+    local name = player.getGroupByType and player.getGroupByType('gang') or nil
     return name or 'none'
 end
 
@@ -361,8 +445,11 @@ end
 Framework.GetPlayerJob = function(src)
     --print("[Community Bridge] Warning: Framework.GetPlayerJob is deprecated, use Framework.GetPlayerJobData instead.")
     local jobData = Framework.GetPlayerJobData(src)
-    if not jobData then return end
-    return jobData.jobName, jobData.jobLabel, jobData.gradeName, jobData.gradeLevel
+    if not jobData then
+        ---@diagnostic disable-next-line: missing-return-value
+        return
+    end
+    return jobData.jobName, jobData.jobLabel, jobData.gradeName, jobData.gradeRank
 end
 
 ---@description This will return the players job name, job label, job grade label job grade level, boss status,
@@ -399,86 +486,264 @@ Framework.SetPlayerJob = function(src, name, grade)
     return nil
 end
 
----@description This will toggle the duty status of the player.
+---@description This will toggle the duty status of the player (active group).
 ---@param src number
 ---@param status boolean
 Framework.SetPlayerDuty = function(src, status)
     local player = Framework.GetPlayer(src)
-    if not player then return end
-    if type(player.set) == 'function' then
-        return player.set('onDuty', status == true, true)
+    if not player or type(player.setActiveGroup) ~= 'function' then return nil end
+    if status == true then
+        local groups = (type(player.getGroups) == 'function' and player.getGroups()) or {}
+        local active = type(player.get) == 'function' and player.get('activeGroup') or nil
+        if active and groups[active] then return true end
+        for groupName in pairs(groups) do
+            local ok = pcall(function() return player.setActiveGroup(groupName) end)
+            return ok and true or false
+        end
+        return false
     end
-    return nil
+    local ok = pcall(function() return player.setActiveGroup(nil) end)
+    return ok and true or false
 end
 
----@description Returns the players duty status.
+---@description Returns the players duty status (active group set).
 ---@param src number
 ---@return boolean | nil
 Framework.GetPlayerDuty = function(src)
     local player = Framework.GetPlayer(src)
-    if not player then return end
-    local duty = player.get('onDuty')
-    if duty == nil then duty = player.get('onduty') end
-    return duty and true or false
+    if not player or type(player.get) ~= 'function' then return end
+    return player.get('activeGroup') ~= nil
 end
 
----@description This will add money based on the type of account (money/bank)
+---@description This will add money based on the type of account (cash/bank) or item name.
 ---@param src number
 ---@param _type string
 ---@param amount number
----@return boolean | nil
+---@return boolean
 Framework.AddAccountBalance = function(src, _type, amount)
     local player = Framework.GetPlayer(src)
     if not player then return false end
     amount = tonumber(amount) or 0
     if amount <= 0 then return false end
-    if _type == 'money' then _type = 'cash' end
-    if _type == 'bank' then
-        local account = player.getAccount and player.getAccount()
-        if not account or not account.addBalance then return false end
-        local result = account.addBalance({ amount = amount })
-        return type(result) == 'table' and result.success == true or result == true
+    local kind, item = resolveMoneyKind(_type)
+    if kind == 'bank' then
+        local account = getCharacterAccount(player)
+        if not account or type(account.addBalance) ~= 'function' then return false end
+        local ok, result = pcall(function()
+            return account.addBalance({ amount = amount, message = 'community_bridge' })
+        end)
+        if not ok then return false end
+        return result == true or (type(result) == 'table' and result.success == true)
     end
-    if GetResourceState('ox_inventory') ~= 'started' then return false end
-    return exports.ox_inventory:AddItem(src, 'money', amount) and true or false
+    if not oxInventoryStarted() then return false end
+    local ok, success = pcall(function()
+        return exports.ox_inventory:AddItem(src, item, amount)
+    end)
+    return ok and success and true or false
 end
 
----@description This will remove money based on the type of account (money/bank)
+---@description This will remove money based on the type of account (cash/bank) or item name.
 ---@param src number
 ---@param _type string
 ---@param amount number
----@return boolean | nil
+---@return boolean
 Framework.RemoveAccountBalance = function(src, _type, amount)
     local player = Framework.GetPlayer(src)
     if not player then return false end
     amount = tonumber(amount) or 0
     if amount <= 0 then return false end
-    if _type == 'money' then _type = 'cash' end
-    if _type == 'bank' then
-        local account = player.getAccount and player.getAccount()
-        if not account or not account.removeBalance then return false end
-        local result = account.removeBalance({ amount = amount })
-        return type(result) == 'table' and result.success == true or result == true
+    local kind, item = resolveMoneyKind(_type)
+    if kind == 'bank' then
+        local account = getCharacterAccount(player)
+        if not account or type(account.removeBalance) ~= 'function' then return false end
+        local ok, result = pcall(function()
+            return account.removeBalance({ amount = amount, message = 'community_bridge' })
+        end)
+        if not ok then return false end
+        return result == true or (type(result) == 'table' and result.success == true)
     end
-    if GetResourceState('ox_inventory') ~= 'started' then return false end
-    return exports.ox_inventory:RemoveItem(src, 'money', amount) and true or false
+    if not oxInventoryStarted() then return false end
+    local ok, success = pcall(function()
+        return exports.ox_inventory:RemoveItem(src, item, amount)
+    end)
+    return ok and success and true or false
 end
 
----@description This will remove money based on the type of account (money/bank)
+---@description This will return the balance based on the type of account (cash/bank) or item name.
 ---@param src number
 ---@param _type string
----@return string | nil
+---@return number
 Framework.GetAccountBalance = function(src, _type)
     local player = Framework.GetPlayer(src)
     if not player then return 0 end
-    if _type == 'money' then _type = 'cash' end
-    if _type == 'bank' then
-        local account = player.getAccount and player.getAccount()
-        if not account or not account.get then return 0 end
-        return tonumber(account.get('balance')) or 0
+    local kind, item = resolveMoneyKind(_type)
+    if kind == 'bank' then
+        return accountBalance(getCharacterAccount(player)) or 0
     end
-    if GetResourceState('ox_inventory') ~= 'started' then return 0 end
-    return exports.ox_inventory:GetItemCount(src, 'money') or 0
+    if not oxInventoryStarted() then return 0 end
+    local ok, count = pcall(function()
+        return exports.ox_inventory:GetItemCount(src, item, nil, false)
+    end)
+    if ok and type(count) == 'number' then return count end
+    return 0
+end
+
+---@description Adds the specified item to the player's inventory.
+---This is an internal function and should not be used outside of bridge, use the Inventory module instead when dealing with items.
+---@param src number
+---@param item string
+---@param count number
+---@param slot number
+---@param metadata table
+---@return boolean
+Framework.AddItem = function(src, item, count, slot, metadata)
+    if not oxInventoryStarted() then return false end
+    local ok, success = pcall(function()
+        return exports.ox_inventory:AddItem(src, item, count, metadata, slot)
+    end)
+    if not ok or not success then return false end
+    TriggerClientEvent('community_bridge:client:inventory:updateInventory', src,
+        { action = 'add', item = item, count = count, slot = slot, metadata = metadata })
+    return true
+end
+
+---@description Removes the specified item from the player's inventory.
+---This is an internal function and should not be used outside of bridge, use the Inventory module instead when dealing with items.
+---@param src number
+---@param item string
+---@param count number
+---@param slot number
+---@param metadata table
+---@return boolean
+Framework.RemoveItem = function(src, item, count, slot, metadata)
+    if not oxInventoryStarted() then return false end
+    local ok, success = pcall(function()
+        return exports.ox_inventory:RemoveItem(src, item, count, metadata, slot)
+    end)
+    if not ok or not success then return false end
+    TriggerClientEvent('community_bridge:client:inventory:updateInventory', src,
+        { action = 'remove', item = item, count = count, slot = slot, metadata = metadata })
+    return true
+end
+
+---@description Sets the metadata for the specified item in the player's inventory.
+---This is an internal function and should not be used outside of bridge, use the Inventory module instead when dealing with items.
+---@param src number
+---@param item string
+---@param slot number
+---@param metadata table
+---@return boolean
+Framework.SetMetadata = function(src, item, slot, metadata)
+    if not oxInventoryStarted() then return false end
+    local ok = pcall(function()
+        exports.ox_inventory:SetMetadata(src, slot, metadata)
+    end)
+    return ok
+end
+
+---@description Returns a table of items matching the specified name (and optional metadata).
+---This is an internal function and should not be used outside of bridge, use the Inventory module instead when dealing with items.
+---@param src number
+---@param item string
+---@param metadata table
+---@return table
+Framework.GetItem = function(src, item, metadata)
+    if not oxInventoryStarted() then return {} end
+    local ok, items = pcall(function()
+        return exports.ox_inventory:GetInventoryItems(src, false)
+    end)
+    if not ok or type(items) ~= 'table' then return {} end
+    local repackedTable = {}
+    for _, v in pairs(items) do
+        if type(v) == 'table' and v.name == item and (not metadata or v.metadata == metadata) then
+            repackedTable[#repackedTable + 1] = {
+                name = v.name,
+                count = v.count or v.amount,
+                metadata = v.metadata or {},
+                slot = v.slot,
+            }
+        end
+    end
+    return repackedTable
+end
+
+---@description Returns the count of items matching the specified name (and optional metadata).
+---This is an internal function and should not be used outside of bridge, use the Inventory module instead when dealing with items.
+---@param src number
+---@param item string
+---@param metadata table
+---@return number
+Framework.GetItemCount = function(src, item, metadata)
+    if not oxInventoryStarted() then return 0 end
+    local ok, count = pcall(function()
+        return exports.ox_inventory:GetItemCount(src, item, metadata, false)
+    end)
+    if ok and type(count) == 'number' then return count end
+    return 0
+end
+
+---@description Returns boolean if the player has the specified item in their inventory.
+---This is an internal function and should not be used outside of bridge, use the Inventory module instead when dealing with items.
+---@param src number
+---@param item string
+---@param requiredCount number|nil
+---@return boolean
+Framework.HasItem = function(src, item, requiredCount)
+    return Framework.GetItemCount(src, item) >= (requiredCount or 1)
+end
+
+---@description Returns the entire inventory of the player as a table.
+---This is an internal function and should not be used outside of bridge, use the Inventory module instead when dealing with items.
+---@param src number
+---@return table
+Framework.GetPlayerInventory = function(src)
+    if not oxInventoryStarted() then return {} end
+    local ok, items = pcall(function()
+        return exports.ox_inventory:GetInventoryItems(src, false)
+    end)
+    if ok and type(items) == 'table' then return items end
+    return {}
+end
+
+---@description Returns the specified slot data as a table.
+---@param src number
+---@param slot number
+---@return table
+Framework.GetItemBySlot = function(src, slot)
+    if not oxInventoryStarted() then return {} end
+    local ok, item = pcall(function()
+        return exports.ox_inventory:GetSlot(src, slot)
+    end)
+    if ok and type(item) == 'table' then return item end
+    return {}
+end
+
+---@description Return the item info in oxs format, {name, label, stack, weight, description, image}
+---@param item string
+---@return table
+Framework.GetItemInfo = function(item)
+    local data = oxItems()[item]
+    if type(data) ~= 'table' then return {} end
+    return {
+        name = data.name or item,
+        label = data.label or item,
+        stack = data.stack ~= false,
+        weight = data.weight or 0,
+        description = data.description,
+        image = data.client and data.client.image or nil,
+    }
+end
+
+---@description This will return the entire items table from the inventory.
+---@return table
+Framework.Items = function()
+    return oxItems()
+end
+
+---@description Alternate item list accessor used by the default Inventory module.
+---@return table
+Framework.ItemList = function()
+    return { Items = oxItems() }
 end
 
 ---@description Returns a table of owned vehicles for the player. format is {vehicle = vehicle, plate = plate}
@@ -486,14 +751,11 @@ end
 ---@return table
 Framework.GetOwnedVehicles = function(src)
     local player = Framework.GetPlayer(src)
-    if not player then return {} end
-    local charId = player.charId
-    local result = MySQL.Sync.fetchAll("SELECT plate, model FROM vehicles WHERE owner = '" .. charId .. "'")
+    if not player or not player.charId then return {} end
+    local result = MySQL.Sync.fetchAll('SELECT plate, model FROM vehicles WHERE owner = ?', { player.charId })
     local vehicles = {}
     for i = 1, #result do
-        local vehicle = result[i].model
-        local plate = result[i].plate
-        table.insert(vehicles, { vehicle = vehicle, plate = plate })
+        vehicles[#vehicles + 1] = { vehicle = result[i].model, plate = result[i].plate }
     end
     return vehicles
 end
@@ -504,21 +766,18 @@ end
 ---@return table|false
 Framework.IsVehicleOwnedByPlayer = function(src, plate)
     local player = Framework.GetPlayer(src)
-    if not player then return false end
-    local charId = player.charId
-    local result = MySQL.Sync.fetchAll("SELECT id, model, plate FROM vehicles WHERE owner = '" ..
-        charId .. "' AND plate = '" .. plate .. "'")
+    if not player or not player.charId then return false end
+    local result = MySQL.Sync.fetchAll('SELECT id, model, plate FROM vehicles WHERE owner = ? AND plate = ?',
+        { player.charId, plate })
     if not result[1] then return false end
 
-    local id = result[1].id
-    local vehicle = result[1].model
-    return { id = id, vehicle = vehicle, plate = plate }
+    return { id = result[1].id, vehicle = result[1].model, plate = plate }
 end
 
 ---@description Registers a usable item with a callback function.
 ---@param itemName string
 ---@param cb function
----@return function
+---@return function|nil
 Framework.RegisterUsableItem = function(itemName, cb)
     local func = function(src, item, itemData)
         itemData = itemData or item
@@ -527,15 +786,13 @@ Framework.RegisterUsableItem = function(itemName, cb)
         cb(src, itemData)
     end
 
-    local serverInventory = GetResourceState('ox_inventory') == 'started'
-    if serverInventory then
-        exports.ox_inventory:registerUsableItem(itemName, func)
-    else
-        RegisterNetEvent('ox_core:useItem:' .. itemName, func)
-        AddEventHandler('ox_core:useItem:' .. itemName, function(...)
-            func(source, ...)
-        end)
+    if oxInventoryStarted() then
+        return exports.ox_inventory:registerUsableItem(itemName, func)
     end
+    RegisterNetEvent('ox_core:useItem:' .. itemName, func)
+    AddEventHandler('ox_core:useItem:' .. itemName, function(...)
+        func(source, ...)
+    end)
 end
 
 ---@description Event handler for when a player is loaded in ox_core framework

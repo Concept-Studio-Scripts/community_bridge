@@ -6,7 +6,12 @@ HelpText = HelpText or {}
 ---@param _position string
 ---@return nil
 HelpText.ShowHelpText = function(message, _position)
-    return Framework.ShowHelpText(message, _position)
+    if type(Framework) == 'table' and type(Framework.ShowHelpText) == 'function' then
+        return Framework.ShowHelpText(message, _position)
+    end
+    if exports.ox_lib then
+        return exports.ox_lib:showTextUI(message, { position = _position or 'top-center' })
+    end
 end
 
 ---This will get the name of the in use resource.
@@ -18,7 +23,12 @@ end
 ---This will hide the help text message on the screen
 ---@return nil
 HelpText.HideHelpText = function()
-    return Framework.HideHelpText()
+    if type(Framework) == 'table' and type(Framework.HideHelpText) == 'function' then
+        return Framework.HideHelpText()
+    end
+    if exports.ox_lib then
+        return exports.ox_lib:hideTextUI()
+    end
 end
 
 RegisterNetEvent('community_bridge:Client:ShowHelpText', function(message, position)

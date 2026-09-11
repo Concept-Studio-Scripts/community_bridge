@@ -15,7 +15,12 @@ end
 ---@return nil
 Notify.SendNotify = function(message, _type, time)
     time = time or 3000
-    return Framework.Notify(message, nil, time)
+    if type(Framework) == 'table' and type(Framework.Notify) == 'function' then
+        return Framework.Notify(message, nil, time)
+    end
+    if lib and lib.notify then
+        return lib.notify({ description = message, type = 'inform', duration = time })
+    end
 end
 
 ---This will send a notify message of the type and time passed
@@ -27,7 +32,12 @@ end
 ---@return nil
 Notify.SendNotification = function(title, message, _type, time, props)
     time = time or 3000
-    return Framework.Notify(message, nil, time)
+    if type(Framework) == 'table' and type(Framework.Notify) == 'function' then
+        return Framework.Notify(message, nil, time)
+    end
+    if lib and lib.notify then
+        return lib.notify({ title = title, description = message, type = 'inform', duration = time })
+    end
 end
 
 RegisterNetEvent('community_bridge:Client:Notify', function(title, message, _type, time, props)
