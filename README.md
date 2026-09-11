@@ -49,7 +49,67 @@ By bridging core game systems including inventory, dispatch, targeting, door loc
 ### Additional Features
 
 * Progress bars, notifications, weather synchronization, and skill system integration
+* Seatbelt providers (qbx\_seatbelt, qb-smallresources, esx\_cruisecontrol, concept\_seatbelt), voice proximity (pma-voice), and normalized current-weapon/ammo reads
 * Developer tools including 3D interaction points, cutscene management, particle effects, scaleform UI, DUI system, and advanced object placement
+
+---
+
+## Configuration
+
+### Client (`settings/clientConfig.lua`)
+
+| Key | Values | Notes |
+|---|---|---|
+| `InputSystem` | `auto` · `ox_lib` · `lation_ui` · `qb-input` | Explicit selection or auto-detect |
+| `MenuSystem` | `auto` · `ox_lib` · `wasabi_uikit` · `lation_ui` · `qb-menu` | |
+| `ProgressBarSystem` | `auto` · `ox_lib` · `wasabi_uikit` · `lation_ui` · `ZSX_UIV2` · `keep-progressbar` · `progressbar` | |
+| `Seatbelt` | `auto` · `qbx_seatbelt` · `qb-smallresources` · `esx_cruisecontrol` · `concept_seatbelt` · `none` | `none` disables buckle events |
+| `Voice` | `auto` · `pma-voice` · `none` | `none` falls back to native proximity |
+| `Debug` | `true` · `false` | Extra module registration logging |
+
+`Fuel`, `VehicleKey`, `Target` and `Phone` providers are detected from started
+resources; they have no config key.
+
+### Shared (`settings/sharedConfig.lua`)
+
+| Key | Values | Notes |
+|---|---|---|
+| `Lang` | `auto` · locale name (`en`, `fr`, ...) | |
+| `DebugLevel` | `0` · `1` · `2` | |
+| `Notify` | `auto` · `ox_lib` · `r_notify` · ... | |
+| `HelpText` | `auto` · `ox_lib` · ... | |
+| `Skills` | `auto` · `OT_skills` · `evolent_skills` · `pickle_xp` | |
+
+### Consumer modules
+
+| Module | API (`exports.community_bridge:<Module>()` or `Bridge.<Module>`) |
+|---|---|
+| `Framework` | players, job/grade, money, hunger/thirst/stress |
+| `Inventory` | items, worth, current weapon, open state, image paths |
+| `Seatbelt` | `GetResourceName`, `HasSeatbelt(vehicle)`, `GetState()` |
+| `Voice` | `GetResourceName`, `GetProximity()` |
+| `Weapons` | `GetCurrentWeapon(ped?)`, `Invalidate(notify?)` |
+
+Normalized client events: `community_bridge:Client:OnPlayerLoaded`,
+`OnPlayerUnload`, `OnPlayerJobUpdate`, `OnNeedsUpdate`, `OnInventoryUpdate`,
+`OnInventoryOpenChange`, `OnWeaponUpdate`, `OnVoiceUpdate`, `OnSeatbeltUpdate`.
+
+### Custom frameworks
+
+Custom frameworks integrate without a bridge config key: register (or extend)
+a `Framework` module from your own resource, on the side(s) you need.
+
+```lua
+exports.community_bridge:RegisterModule('Framework', {
+    GetResourceName = function() return 'my_framework' end,
+    GetIsPlayerLoaded = function() return LocalPlayer.state.loaded == true end,
+    GetHunger = function() return 100 end,
+    -- ... any other Framework functions you support
+})
+```
+
+Registered functions merge over the `_default` fallbacks, so consumers only ever
+talk to community_bridge.
 
 ---
 
