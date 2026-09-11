@@ -58,4 +58,11 @@ RegisterNetEvent('community_bridge:client:qb-inventory:openStash', function(id, 
     TriggerServerEvent('inventory:server:OpenInventory', 'stash', id, { maxweight = data.weight, slots = data.slots })
 end)
 
+-- Normalized inventory-change broadcast for bridge consumers.
+RegisterNetEvent('QBCore:Client:OnPlayerUpdated', function(key)
+    if key == 'items' then
+        TriggerEvent('community_bridge:Client:OnInventoryUpdate')
+    end
+end)
+
 return Inventory

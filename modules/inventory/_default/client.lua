@@ -99,4 +99,68 @@ Inventory.Items = function()
     return Framework.Shared.Items
 end
 
+---@description Returns the currently held weapon via the Weapons module.
+---@param ped number|nil
+---@return table|nil { name, label, hash, group, image, images, clip, reserve }
+Inventory.GetCurrentWeapon = function(ped)
+    if Weapons and Weapons.GetCurrentWeapon then
+        return Weapons.GetCurrentWeapon(ped)
+    end
+    return nil
+end
+
+---@description Clears the weapon read cache.
+Inventory.InvalidateWeaponCache = function()
+    if Weapons and Weapons.Invalidate then Weapons.Invalidate() end
+end
+
+---@description Sums an item's stack worth from its metadata (default key 'worth').
+---@param item string
+---@param metaKey string|nil
+---@return number
+Inventory.GetItemWorth = function(item, metaKey)
+    if type(item) ~= 'string' or item == '' then return 0 end
+    metaKey = metaKey or 'worth'
+    local inv = Inventory.GetPlayerInventory and Inventory.GetPlayerInventory() or nil
+    if type(inv) ~= 'table' then return 0 end
+    local total = 0
+    for _, v in pairs(inv) do
+        if type(v) == 'table' and v.name == item then
+            local count = tonumber(v.count or v.amount) or 1
+            local meta = v.metadata or v.info
+            if type(meta) == 'string' and meta ~= '' then
+                local ok, decoded = pcall(json.decode, meta)
+                if ok then meta = decoded end
+            end
+            local worth = type(meta) == 'table' and tonumber(meta[metaKey]) or nil
+            if worth then total = total + worth * count end
+        end
+    end
+    return math.floor(total + 0.5)
+end
+
+---@description True while a player inventory is open (inventory statebag).
+---@return boolean
+Inventory.IsOpen = function()
+    local state = LocalPlayer and LocalPlayer.state
+    if not state then return false end
+    return state.invOpen == true or state.invOpened == true
+end
+
+-- Inventory open/close broadcast. Filtered to the local player's bag once the
+-- server id is known (the statebag may not be replicated before that).
+CreateThread(function()
+    local serverId = GetPlayerServerId(PlayerId())
+    while serverId == 0 do
+        Wait(250)
+        serverId = GetPlayerServerId(PlayerId())
+    end
+    local bag = ('player:%s'):format(serverId)
+    local function notify(_, _, value)
+        TriggerEvent('community_bridge:Client:OnInventoryOpenChange', value == true)
+    end
+    AddStateBagChangeHandler('invOpen', bag, notify)
+    AddStateBagChangeHandler('invOpened', bag, notify)
+end)
+
 return Inventory

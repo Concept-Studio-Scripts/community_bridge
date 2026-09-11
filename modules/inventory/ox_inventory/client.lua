@@ -62,6 +62,14 @@ Inventory.GetImagePath = function(item)
     return imagePath or "https://avatars.githubusercontent.com/u/47620135"
 end
 
+-- Normalized inventory-change broadcast for bridge consumers.
+AddEventHandler('ox_inventory:updateInventory', function()
+    TriggerEvent('community_bridge:Client:OnInventoryUpdate')
+end)
+AddEventHandler('ox_inventory:itemCount', function()
+    TriggerEvent('community_bridge:Client:OnInventoryUpdate')
+end)
+
 ---@description This will return the players inventory in the format of {name, label, count, slot, metadata}
 ---@return table
 Inventory.GetPlayerInventory = function()
