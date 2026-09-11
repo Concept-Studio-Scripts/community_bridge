@@ -90,9 +90,22 @@ resources; they have no config key.
 | `Voice` | `GetResourceName`, `GetProximity()` |
 | `Weapons` | `GetCurrentWeapon(ped?)`, `Invalidate(notify?)` |
 
-Normalized client events: `community_bridge:Client:OnPlayerLoaded`,
-`OnPlayerUnload`, `OnPlayerJobUpdate`, `OnNeedsUpdate`, `OnInventoryUpdate`,
-`OnInventoryOpenChange`, `OnWeaponUpdate`, `OnVoiceUpdate`, `OnSeatbeltUpdate`.
+Normalized events (stable, additive):
+
+| Side | Event | Payload |
+|---|---|---|
+| client | `community_bridge:Client:OnPlayerLoaded` | — |
+| client | `community_bridge:Client:OnPlayerUnload` | — |
+| client | `community_bridge:Client:OnPlayerJobUpdate` | `name, label, gradeName, grade` |
+| client | `community_bridge:Client:OnNeedsUpdate` | `{ hunger, thirst, stress }?` |
+| client | `community_bridge:Client:OnInventoryUpdate` | `{ resource, reason }?` |
+| client | `community_bridge:Client:OnInventoryOpenChange` | `open: boolean` |
+| client | `community_bridge:Client:OnWeaponUpdate` | weapon pack, or `nil` when holstered |
+| client | `community_bridge:Client:OnVoiceUpdate` | `{ index, mode, distance }` |
+| client | `community_bridge:Client:OnSeatbeltUpdate` | `buckled: boolean?` |
+| server | `community_bridge:Server:OnPlayerLoaded` | `src` |
+| server | `community_bridge:Server:OnPlayerUnload` | `src` |
+| server | `community_bridge:Server:OnPlayerJobChange` | `src, jobName` |
 
 ### Custom frameworks
 
@@ -110,6 +123,21 @@ exports.community_bridge:RegisterModule('Framework', {
 
 Registered functions merge over the `_default` fallbacks, so consumers only ever
 talk to community_bridge.
+
+### Tested versions
+
+| Resource | Version |
+|---|---|
+| ox_core | 1.5.9 |
+| ox_inventory | 2.47.9 |
+| ox_lib | 3.39.0 |
+| pma-voice | 7.0.1 |
+
+QBCore / Qbox / ESX are supported through the same module contracts (their
+adapters use each framework's public API); pin the framework version you test
+against when releasing. The seatbelt, voice and weapons modules are consumed by
+`concept_hud` and are additive — existing framework/inventory consumers are
+unaffected.
 
 ---
 
