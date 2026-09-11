@@ -131,14 +131,72 @@ Framework.GetPlayerJobData = function()
     }
 end
 
+-- esx_status is client-authoritative and updates asynchronously; cache its
+-- ticks so GetHunger/GetThirst/GetStress return live values (playerData
+-- variables go stale once esx_status:add fires).
+local EsxStatusLive = {}
+
+local function ApplyEsxStatusList(statuses)
+    if type(statuses) ~= 'table' then return end
+    local changed = false
+    for i = 1, #statuses do
+        local entry = statuses[i]
+        if type(entry) == 'table' and type(entry.name) == 'string' and type(entry.percent) == 'number' then
+            local v = math.max(0, math.min(100, entry.percent + 0.0))
+            if EsxStatusLive[entry.name] ~= v then
+                EsxStatusLive[entry.name] = v
+                changed = true
+            end
+        end
+    end
+    if changed then
+        TriggerEvent('community_bridge:Client:OnNeedsUpdate', {
+            hunger = EsxStatusLive.hunger,
+            thirst = EsxStatusLive.thirst,
+            stress = EsxStatusLive.stress,
+        })
+    end
+end
+
+AddEventHandler('esx_status:onTick', ApplyEsxStatusList)
+
+---@param name string
+---@return number|nil
+local function RefreshEsxStatus(name)
+    if GetResourceState('esx_status') ~= 'started' then return nil end
+    local percent = nil
+    pcall(function()
+        TriggerEvent('esx_status:getStatus', name, function(status)
+            if type(status) ~= 'table' then return end
+            if type(status.getPercent) == 'function' then
+                percent = status.getPercent()
+            elseif type(status.val) == 'number' then
+                percent = (status.val / 1000000.0) * 100.0
+            end
+        end)
+    end)
+    if type(percent) == 'number' then
+        EsxStatusLive[name] = math.max(0, math.min(100, percent + 0.0))
+    end
+    return EsxStatusLive[name]
+end
+
 ---@description This is an internal function to get status data
 --- @param search string
 Framework.GetStatusData = function(search)
+    if type(search) ~= 'string' then return 0 end
+    if EsxStatusLive[search] == nil then
+        RefreshEsxStatus(search)
+    end
+    if EsxStatusLive[search] ~= nil then
+        return EsxStatusLive[search]
+    end
     local playerData = Framework.GetPlayerData()
-    if not playerData then return 0 end
+    if not playerData or type(playerData.variables) ~= 'table' then return 0 end
     local status = playerData.variables.status
+    if type(status) ~= 'table' then return 0 end
     for _, entry in ipairs(status) do
-        if entry.name == search then
+        if type(entry) == 'table' and entry.name == search then
             return entry.percent or 0
         end
     end
@@ -156,6 +214,13 @@ end
 ---@return number
 Framework.GetThirst = function()
     local status = Framework.GetStatusData("thirst")
+    return math.floor((status) + 0.5) or 0
+end
+
+---@description This will get the stress of a player (0-100)
+---@return number
+Framework.GetStress = function()
+    local status = Framework.GetStatusData("stress")
     return math.floor((status) + 0.5) or 0
 end
 

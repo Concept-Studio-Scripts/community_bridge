@@ -247,6 +247,38 @@ Framework.GetPlayerMetadata = function(src, metadata)
     return xPlayer.getMeta(metadata) or false
 end
 
+---@description Returns the player's stress (0-100). ESX keeps stress in metadata.
+---@param src number
+---@return number
+Framework.GetStress = function(src)
+    local value = Framework.GetPlayerMetadata(src, 'stress')
+    return math.floor((tonumber(value) or 0) + 0.5)
+end
+
+---@description Adds the specified value to the player's stress and updates the client HUD.
+---@param src number
+---@param value number
+---@return number | nil
+Framework.AddStress = function(src, value)
+    local current = tonumber(Framework.GetPlayerMetadata(src, 'stress')) or 0
+    local newStress = Math.Clamp(current + (tonumber(value) or 0), 0, 100)
+    if not Framework.SetPlayerMetadata(src, 'stress', newStress) then return nil end
+    TriggerClientEvent('hud:client:UpdateStress', src, newStress)
+    return newStress
+end
+
+---@description Removes the specified value from the player's stress and updates the client HUD.
+---@param src number
+---@param value number
+---@return number | nil
+Framework.RemoveStress = function(src, value)
+    local current = tonumber(Framework.GetPlayerMetadata(src, 'stress')) or 0
+    local newStress = Math.Clamp(current - (tonumber(value) or 0), 0, 100)
+    if not Framework.SetPlayerMetadata(src, 'stress', newStress) then return nil end
+    TriggerClientEvent('hud:client:UpdateStress', src, newStress)
+    return newStress
+end
+
 ---@description This is an internal function and should not be used outside of bridge, this is only present in the esx portion.
 --- @param src number
 --- @param column string
