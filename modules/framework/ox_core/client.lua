@@ -122,10 +122,11 @@ Framework.GetResourceName = function()
 end
 
 ---@description This will return true if the player is loaded, false otherwise.
----This could be useful in scripts that rely on player loaded events and offer a debug mode to hit this function.
+---ox exposes the player object only once a character exists, so this is the
+---authoritative readiness signal (the isLoggedIn state is set at load).
 ---@return boolean
 Framework.GetIsPlayerLoaded = function()
-    return LocalPlayer.state.isLoggedIn or false
+    return getPlayerObject() ~= nil
 end
 
 ---@description Returns the raw OxPlayer object. Internal use, avoid outside of bridge.
@@ -164,11 +165,14 @@ end
 
 ---@description This will return the account balance for the requested type.
 ---'bank' reads the character account; cash and other types read ox_inventory items.
+---Returns nil until a character is loaded so consumers don't flash $0.
 ---@param _type string
----@return number
+---@return number|nil
 Framework.GetAccountBalance = function(_type)
+    if not getPlayerObject() then return nil end
     local balance = Callback.Trigger('community_bridge:Callback:GetAccountBalance', _type)
-    return balance
+    if type(balance) == 'number' then return balance end
+    return nil
 end
 
 ---@description This will get the hunger of a player (HUD “remaining”: 100 = full).
@@ -384,6 +388,12 @@ end)
 
 ---@description Event handler for when player logs out (returns to character select)
 AddEventHandler('ox:playerLogout', function()
+    TriggerEvent('community_bridge:Client:OnPlayerUnload')
+end)
+
+---@description Entering character select is also an unload for consumers:
+---ox_core fires this when swapping characters, not just on full logout.
+AddEventHandler('ox:startCharacterSelect', function()
     TriggerEvent('community_bridge:Client:OnPlayerUnload')
 end)
 
