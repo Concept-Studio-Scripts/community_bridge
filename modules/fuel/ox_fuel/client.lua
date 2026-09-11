@@ -24,8 +24,8 @@ end
 ---@return nil
 Fuel.SetFuel = function(vehicle, fuel, type)
     if not DoesEntityExist(vehicle) then return end
-    local state = Entity(vehicle).state
-    state.fuel = (state.fuel or 0) + fuel
+    -- Absolute assignment (was additive, which broke "set to X" callers).
+    Entity(vehicle).state.fuel = fuel
 end
 
 return Fuel
