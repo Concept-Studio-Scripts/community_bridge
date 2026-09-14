@@ -113,6 +113,58 @@ local function getCharacterAccount(player)
     return nil
 end
 
+-- Online character default accounts (bank), used to route ox_core account
+-- events to the owning client. Personal accounts only; group/society accounts
+-- are not tracked. A missed mapping only costs latency (consumers still poll).
+local AccountSource = {}
+local SourceAccount = {}
+
+---@param src number
+---@param accountId any
+local function NoteAccountId(src, accountId)
+    if not src or accountId == nil then return end
+    local key = tostring(accountId)
+    local previous = SourceAccount[src]
+    if previous and previous ~= key and AccountSource[previous] == src then
+        AccountSource[previous] = nil
+    end
+    AccountSource[key] = src
+    SourceAccount[src] = key
+end
+
+---@param src number
+---@param account table|nil
+local function NoteAccount(src, account)
+    if type(account) ~= 'table' then return end
+    NoteAccountId(src, account.accountId)
+end
+
+---@param src number
+local function TrackPlayerAccount(src)
+    NoteAccount(src, getCharacterAccount(Framework.GetPlayer(src)))
+end
+
+---@param src number
+local function UntrackPlayerAccount(src)
+    local accountId = SourceAccount[src]
+    if accountId == nil then return end
+    SourceAccount[src] = nil
+    if AccountSource[accountId] == src then AccountSource[accountId] = nil end
+end
+
+---@param accountId any
+---@param action string
+---@param amount number|nil
+local function NotifyAccount(accountId, action, amount)
+    local src = accountId ~= nil and AccountSource[tostring(accountId)] or nil
+    if not src then return end
+    TriggerClientEvent('community_bridge:Client:OnAccountUpdate', src, {
+        account = 'bank',
+        action = action,
+        amount = amount,
+    })
+end
+
 ---@param account table|nil
 ---@return number|nil
 local function accountBalance(account)
@@ -578,7 +630,9 @@ Framework.GetAccountBalance = function(src, _type)
     if not player then return 0 end
     local kind, item = resolveMoneyKind(_type)
     if kind == 'bank' then
-        return accountBalance(getCharacterAccount(player)) or 0
+        local account = getCharacterAccount(player)
+        NoteAccount(src, account)
+        return accountBalance(account) or 0
     end
     if not oxInventoryStarted() then return 0 end
     local ok, count = pcall(function()
@@ -799,6 +853,7 @@ end
 RegisterNetEvent("ox:playerLoaded", function(playerId, userId, charId)
     playerId = playerId or source
     TriggerEvent("community_bridge:Server:OnPlayerLoaded", playerId)
+    TrackPlayerAccount(playerId)
     local jobData = Framework.GetPlayerJobData(playerId)
     if not jobData then return end
     Framework.AddJobCount(playerId, jobData.jobName)
@@ -807,6 +862,7 @@ end)
 ---@description Event handler for when a player logs out in ox_core framework
 RegisterNetEvent("ox:playerLogout", function(playerId, userId, charId)
     playerId = playerId or source
+    UntrackPlayerAccount(playerId)
     TriggerEvent("community_bridge:Server:OnPlayerUnload", playerId)
 end)
 
@@ -820,7 +876,50 @@ end)
 ---@description Event handler for when a player disconnects from the server
 AddEventHandler("playerDropped", function()
     local src = source
+    UntrackPlayerAccount(src)
     TriggerEvent("community_bridge:Server:OnPlayerUnload", src)
+end)
+
+-- ox_core account events -> normalized client hint. The bridge carries no
+-- balance here; consumers re-read the authoritative value (poll fallback for
+-- builds without these events). Personal default accounts only: deposits or
+-- withdrawals into a shared/business account must not hint the HUD.
+AddEventHandler("ox:depositedMoney", function(data)
+    if type(data) ~= 'table' or data.accountId == nil then return end
+    local src = tonumber(data.playerId)
+    if not src then return end
+    if not SourceAccount[src] then TrackPlayerAccount(src) end
+    if tostring(SourceAccount[src]) ~= tostring(data.accountId) then return end
+    TriggerClientEvent('community_bridge:Client:OnAccountUpdate', src, {
+        account = 'bank',
+        action = 'deposit',
+        amount = tonumber(data.amount),
+    })
+end)
+
+AddEventHandler("ox:withdrewMoney", function(data)
+    if type(data) ~= 'table' or data.accountId == nil then return end
+    local src = tonumber(data.playerId)
+    if not src then return end
+    if not SourceAccount[src] then TrackPlayerAccount(src) end
+    if tostring(SourceAccount[src]) ~= tostring(data.accountId) then return end
+    TriggerClientEvent('community_bridge:Client:OnAccountUpdate', src, {
+        account = 'bank',
+        action = 'withdraw',
+        amount = tonumber(data.amount),
+    })
+end)
+
+AddEventHandler("ox:updatedBalance", function(data)
+    if type(data) ~= 'table' then return end
+    NotifyAccount(data.accountId, data.action == 'add' and 'add' or 'remove', tonumber(data.amount))
+end)
+
+AddEventHandler("ox:transferredMoney", function(data)
+    if type(data) ~= 'table' then return end
+    local amount = tonumber(data.amount)
+    NotifyAccount(data.fromId, 'transfer_out', amount)
+    NotifyAccount(data.toId, 'transfer_in', amount)
 end)
 
 Framework.Commands = {}

@@ -103,9 +103,15 @@ Normalized events (stable, additive):
 | client | `community_bridge:Client:OnWeaponUpdate` | weapon pack, or `nil` when holstered |
 | client | `community_bridge:Client:OnVoiceUpdate` | `{ index, mode, distance }` |
 | client | `community_bridge:Client:OnSeatbeltUpdate` | `buckled: boolean?` |
+| client | `community_bridge:Client:OnAccountUpdate` | `{ account: 'bank', action: string, amount: number? }` |
 | server | `community_bridge:Server:OnPlayerLoaded` | `src` |
 | server | `community_bridge:Server:OnPlayerUnload` | `src` |
 | server | `community_bridge:Server:OnPlayerJobChange` | `src, jobName` |
+
+`OnAccountUpdate` is a hint that the local character's own bank account has
+changed (ox_core: deposit/withdraw/transfer/balance updates). It carries no
+balance — consumers re-read `Framework.GetAccountBalance('bank')`. Adapters
+that do not emit it leave consumers on their polling cadence.
 
 ### Custom frameworks
 
