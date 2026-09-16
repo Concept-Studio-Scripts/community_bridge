@@ -337,4 +337,14 @@ RegisterNetEvent('esx:setJob', function(data)
     TriggerEvent('community_bridge:Client:OnPlayerJobUpdate', data.name, data.label, data.grade_label, data.grade)
 end)
 
+---@description Event handler for when an ESX account balance changes (ATM,
+---shops, society pay, admin commands). Forwards as the shared account hint so
+---consumers (concept_hud bank) refresh immediately instead of waiting for
+---their poll cadence. The payload carries no balance; consumers re-read it.
+---@param account table Account table containing name ('bank', 'money', ...) and money
+RegisterNetEvent('esx:setAccountMoney', function(account)
+    local name = type(account) == 'table' and account.name or nil
+    TriggerEvent('community_bridge:Client:OnAccountUpdate', { account = name })
+end)
+
 return Framework
