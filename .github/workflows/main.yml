@@ -10,6 +10,11 @@ permissions:
 jobs:
   send-webhook:
     runs-on: ubuntu-latest
+    # Fork guard: this payload pings an upstream Discord role
+    # (<@&1337224918710095882>) and links to TheOrderFivem/community_bridge, so it
+    # must not run from this fork. Harmless only while RELEASE_WEBHOOK_URL is
+    # unset here; this guard keeps it inert even if that secret is ever added.
+    if: github.repository == 'TheOrderFivem/community_bridge'
 
     steps:
       # Reads only the release event payload, so no checkout is needed and jq

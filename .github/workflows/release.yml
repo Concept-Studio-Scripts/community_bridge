@@ -22,6 +22,10 @@ permissions:
 jobs:
   check-version:
     runs-on: ubuntu-latest
+    # Fork guard: this workflow publishes releases for upstream only. Without it,
+    # a push to this fork's main that touches fxmanifest.lua would publish a
+    # release here. Remove this line if this fork ever becomes canonical.
+    if: github.repository == 'TheOrderFivem/community_bridge'
     outputs:
       should_release: ${{ steps.meta.outputs.should_release }}
       version: ${{ steps.meta.outputs.version }}
@@ -75,7 +79,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && github.repository == 'TheOrderFivem/community_bridge'
 
     steps:
       - name: Checkout
